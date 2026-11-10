@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DevToolbox · 开发者的小工具箱</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232563eb'/%3E%3Cpath d='M12 10l-5 6 5 6M20 10l5 6-5 6' stroke='white' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css?v=202610271643">
+<script src="js/app.js?v=202610271643"></script>
+<style>
+  /* ---------- 首页专用：居中、留白、浅色卡片风格 ---------- */
+  :root[data-theme="dark"] {
+    --home-bg: #0b0d12;
+    --home-card: #161b23;
+    --home-tile: rgba(59,130,246,.16);
+    --home-tile-fg: #7cb0ff;
+    --home-title: #f2f5fa;
+    --home-sub: #9aa3ad;
+    --home-card-title: #eef1f6;
+    --home-card-desc: #9aa3ad;
+    --home-border: #2a3140;
+  }
+  :root[data-theme="light"], :root[data-theme="eye"], :root[data-theme="solar"] {
+    --home-bg: #f8f9fb;
+    --home-card: #ffffff;
+    --home-tile: #e8f0fe;
+    --home-tile-fg: #2563eb;
+    --home-title: #111827;
+    --home-sub: #6b7280;
+    --home-card-title: #111827;
+    --home-card-desc: #6b7280;
+    --home-border: #e5e7eb;
+  }
+
+  body.home { background: var(--home-bg); }
+
+  .home-wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 72px 24px 80px;
+  }
+
+  /* hero 居中 */
+  .home-hero { text-align: center; }
+  .home-hero h1 {
+    margin: 0;
+    font-size: 34px;
+    font-weight: 800;
+    letter-spacing: -.5px;
+    color: var(--home-title);
+    background: none;
+    -webkit-text-fill-color: currentColor;
+  }
+  .home-hero .sub {
+    margin: 12px 0 0;
+    font-size: 14px;
+    color: var(--home-sub);
+  }
+  .home-hero .sub .dot { margin: 0 10px; opacity: .5; }
+
+  /* 搜索框 */
+  .search-wrap {
+    max-width: 540px;
+    margin: 30px auto 0;
+    position: relative;
+  }
+  .search-wrap svg {
+    position: absolute;
+    left: 14px; top: 50%;
+    transform: translateY(-50%);
+    width: 16px; height: 16px;
+    color: #9ca3af;
+    pointer-events: none;
+  }
+  .search-input {
+    width: 100%;
+    padding: 11px 16px 11px 40px;
+    font: inherit;
+    font-size: 14px;
+    color: var(--home-title);
+    background: var(--home-card);
+    border: 1px solid var(--home-border);
+    border-radius: 10px;
+    outline: none;
+    transition: border-color .15s ease, box-shadow .15s ease;
+  }
+  .search-input::placeholder { color: var(--home-sub); opacity: .7; }
+  .search-input:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37,99,235,.12);
+  }
+
+  /* 卡片网格 */
+  .home-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 22px;
+    margin-top: 56px;
+  }
+  @media (max-width: 1000px) { .home-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px)  { .home-grid { grid-template-columns: 1fr; } }
+
+  .tool-card {
+    display: block;
+    background: var(--home-card);
+    border: 1px solid var(--home-border);
+    border-radius: 12px;
+    padding: 20px;
+    text-decoration: none;
+    transition: box-shadow .18s ease, transform .18s ease, border-color .18s ease;
+  }
+  .tool-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px -14px rgba(0,0,0,.6);
+    border-color: var(--home-tile-fg);
+  }
+  .tool-card:active { transform: translateY(0); }
+
+  .tool-ico {
+    width: 42px; height: 42px;
+    border-radius: 10px;
+    background: var(--home-tile);
+    color: var(--home-tile-fg);
+    display: grid; place-items: center;
+    font-size: 16px;
+    font-weight: 800;
+    margin-bottom: 16px;
+  }
+  .tool-ico svg { width: 20px; height: 20px; }
+
+  .tool-card h2 {
+    margin: 0 0 8px;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--home-card-title);
+  }
+  .tool-card p {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.65;
+    color: var(--home-card-desc);
+  }
+
+  .tool-card.soon { cursor: default; }
+  .tool-card.soon:hover { transform: none; box-shadow: none; border-color: var(--home-border); }
+  .tool-card.soon .tool-ico { opacity: .55; }
+  .tool-card.soon h2, .tool-card.soon p { opacity: .6; }
+
+  .no-result {
+    display: none;
+    text-align: center;
+    color: var(--home-sub);
+    font-size: 14px;
+    margin-top: 48px;
+  }
+  .no-result.show { display: block; }
+
+  /* 入场动画：hero → 搜索框 → 卡片瀑布式错峰 */
+  @keyframes homeFadeUp {
+    from { opacity: 0; transform: translateY(18px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes homeScale {
+    from { opacity: 0; transform: translateY(12px) scale(.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  .home-hero h1 { animation: homeFadeUp .55s ease both; }
+  .home-hero .sub { animation: homeFadeUp .55s .08s ease both; }
+  .search-wrap { animation: homeFadeUp .55s .16s ease both; }
+  .search-input { transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease; }
+  .search-input:focus { transform: scale(1.015); }
+  .tool-card {
+    animation: homeScale .5s ease both;
+    animation-delay: calc(.24s + var(--i, 0) * 60ms);
+  }
+  .home-foot { animation: fadeIn .6s .6s ease both; }
+  .no-result.show { animation: fadeIn .3s ease both; }
+  .tool-ico { transition: transform .18s ease; }
+  .tool-card:hover .tool-ico { transform: scale(1.08) rotate(-3deg); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: .01ms !important;
+      transition-duration: .01ms !important;
+    }
+  }
+
+  .home-foot {
+    text-align: center;
+    margin-top: 64px;
+    font-size: 12.5px;
+    color: var(--home-sub);
+  }
+  .home-foot .kbd-mini {
+    border: 1px solid var(--home-border); border-bottom-width: 2px;
+    border-radius: 5px; padding: 1px 6px; margin: 0 2px;
+    font-size: 11.5px;
+    background: var(--home-card);
+  }
+  /* 主题切换按钮（扩展首页浮动） */
+  #themeBtn.home-theme {
+    position: fixed; top: 18px; right: 18px;
+    width: 38px; height: 38px;
+    border-radius: 10px;
+    border: 1px solid var(--home-border);
+    background: var(--home-card);
+    color: var(--home-tile-fg);
+    display: grid; place-items: center;
+    cursor: pointer; padding: 0;
+    transition: border-color .15s, transform .15s, background .18s;
+    z-index: 20;
+  }
+  #themeBtn.home-theme:hover { border-color: var(--home-tile-fg); transform: translateY(-1px); }
+  #themeBtn.home-theme svg { width: 18px; height: 18px; }
+
+</style>
+</head>
+<body class="home">
+<button class="home-theme" id="themeBtn" title="切换主题">
+  <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+       stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+  </svg>
+  <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+       stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="4"/>
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+  </svg>
+</button>
+<div class="home-wrap">
+
+  <div class="home-hero">
+    <h1>开发者的小工具箱</h1>
+    <p class="sub">免费<span class="dot">·</span>无需注册<span class="dot">·</span>所有数据仅在你的浏览器中处理</p>
+
+    <div class="search-wrap">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>
+      </svg>
+      <input class="search-input" id="search" type="text"
+             placeholder="搜索工具，如：json、diff、markdown..." autocomplete="off">
+    </div>
+  </div>
+
+  <div class="home-grid" id="grid">
+
+    <a class="tool-card" style="--i:0" href="tools/json.html"
+       data-keys="json 格式化 格式化 压缩 校验 排序 美化 format">
+      <div class="tool-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 7l-4 5 4 5M15 7l4 5-4 5"/></svg></div>
+      <h2>JSON 格式化</h2>
+      <p>格式化、压缩、校验 JSON，错误定位行列</p>
+    </a>
+
+    <a class="tool-card" style="--i:1" href="tools/diff.html"
+       data-keys="diff 对比 文本 compare 差异 比较">
+      <div class="tool-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13M14 4l3.5 4L14 12M20 16H7M10 12l-3.5 4L10 20"/></svg></div>
+      <h2>文本对比</h2>
+      <p>左右文本逐行对比，高亮差异，支持忽略大小写</p>
+    </a>
+
+    <a class="tool-card" style="--i:2" href="tools/sql.html"
+       data-keys="sql 格式化 数据库 hive spark mysql 美化">
+      <div class="tool-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5.5" rx="7.5" ry="3"/><path d="M4.5 5.5v13c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-13M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3"/></svg></div>
+      <h2>SQL 格式化</h2>
+      <p>SQL 关键字大小写、换行缩进，支持多种方言</p>
+    </a>
+
+    <a class="tool-card" style="--i:3" href="tools/date.html"
+       data-keys="date 日期 时间 时间戳 timestamp 转化 时区">
+      <div class="tool-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></div>
+      <h2>日期转化</h2>
+      <p>时间戳与日期互转，时区对照，相对时间</p>
+    </a>
+
+    <a class="tool-card" style="--i:4" href="tools/md.html"
+       data-keys="markdown md 编辑器 预览 编辑 笔记">
+      <div class="tool-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17V8l4 5 4-5v9M19 7v8M19 15l-2.5-2.5M19 15l2.5-2.5"/></svg></div>
+      <h2>Markdown 编辑器</h2>
+      <p>双栏实时预览，GFM 语法，代码高亮</p>
+    </a>
+
+    <div class="tool-card soon" aria-disabled="true">
+      <div class="tool-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.7 3.8 9S14.5 18.4 12 21c-2.5-2.6-3.8-5.7-3.8-9S9.5 5.6 12 3z"/></svg></div>
+      <h2>翻译</h2>
+      <p>中英互译（即将上线）</p>
+    </div>
+
+  </div>
+
+  <p class="no-result" id="noResult">没有找到匹配的工具，换个关键词试试</p>
+
+  <p class="home-foot">
+    提示：在工具页内按 <span class="kbd-mini">⌘⏎</span> 执行主操作，数据不会离开你的浏览器
+  </p>
+</div>
+
+<script src="index-1.js"></script>
+<script src="index-2.js"></script>
+</body>
+</html>

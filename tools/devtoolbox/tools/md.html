@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Markdown 编辑预览 · DevToolbox</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%236366f1'/%3E%3Cpath d='M8 22V10l6 6 6-6v12' stroke='white' stroke-width='2.2' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="../css/app.css?v=202610281600">
+<script src="../js/app.js?v=202610281600"></script>
+<script src="../js/vendor/marked.min.js?v=202610281600"></script>
+<style>
+  .md-pane { min-height: 460px; }
+
+  /* 仅编辑 / 仅预览：单栏铺满整个工具区 */
+  body.view-edit .panes,
+  body.view-preview .panes { grid-template-columns: 1fr; }
+  body.view-edit .md-pane,
+  body.view-preview .md-pane { min-height: 0; }
+  .stats-sep { color: var(--border); }
+
+  /* ---------- Typora 式：预览可直接编辑 ---------- */
+  .md-body[contenteditable="true"] { outline: none; cursor: text; }
+  .md-body[contenteditable="true"]:focus { box-shadow: inset 0 0 0 1px var(--accent-soft); }
+  .md-body[contenteditable="true"]:empty::before {
+    content: "在这里直接输入，和 Typora 一样所见即所得…";
+    color: var(--muted); opacity: .7;
+  }
+  .md-body .md-active-block { background: rgba(127,127,127,.06); border-radius: 6px; }
+
+  /* ---------- 大纲 ---------- */
+  #previewPane { position: relative; }
+  .outline {
+    position: absolute;
+    top: 54px; right: 12px; bottom: 12px;
+    width: 190px;
+    display: flex;
+    flex-direction: column;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 30px -18px rgba(0,0,0,.75);
+    transform: translateX(12px);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .16s ease, transform .16s ease;
+    z-index: 5;
+    overflow: hidden;
+  }
+  .outline.open { opacity: 1; transform: translateX(0); pointer-events: auto; }
+  .outline-head {
+    flex: 0 0 auto;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .outline-close {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 15px; line-height: 1; cursor: pointer; padding: 0 2px;
+  }
+  .outline-close:hover { color: var(--fg); }
+  .outline-list {
+    flex: 1 1 auto; overflow: auto; padding: 6px;
+    font-size: 12.5px;
+  }
+  .outline-item {
+    display: block;
+    padding: 4px 8px;
+    border-radius: 6px;
+    color: var(--muted);
+    text-decoration: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer;
+    border-left: 2px solid transparent;
+  }
+  .outline-item:hover { color: var(--fg); background: var(--panel-head); }
+  .outline-item.active { color: var(--fg-strong); border-left-color: var(--accent); background: var(--accent-soft); }
+  .outline-item .lvl-1 { font-weight: 600; }
+  .outline-empty { padding: 10px 8px; color: var(--muted); font-size: 12px; }
+
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div class="brand">
+      <a class="brand-link" href="../index.html" title="返回首页">
+        <div class="mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 18V7l4 5 4-5v11"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Markdown 编辑预览</h1>
+          <p class="sub">左边写、右边看；草稿自动保存在本机</p>
+        </div>
+      </a>
+    </div>
+    <div class="top-actions">
+      <button class="icon-btn" id="themeBtn" title="切换浅色 / 深色" aria-label="切换主题">
+        <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+        </svg>
+        <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="4"/>
+          <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="toolbar">
+    <div class="opts">
+      <div class="opt">
+        <span class="opt-label">视图</span>
+        <div class="seg" id="segView" role="group" aria-label="视图模式">
+          <button data-value="both">分栏</button>
+          <button data-value="edit">仅编辑</button>
+          <button data-value="preview">仅预览</button>
+        </div>
+      </div>
+      <div class="opt">
+        <span class="opt-label">换行</span>
+        <div class="seg" id="segBreak" role="group" aria-label="单换行处理">
+          <button data-value="soft">同段落</button>
+          <button data-value="hard">强制换行</button>
+        </div>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn" id="sampleBtn">示例</button>
+      <button class="btn" id="clearBtn">清空</button>
+      <button class="btn" id="copyMdBtn">复制 MD</button>
+      <button class="btn" id="copyHtmlBtn">复制 HTML</button>
+      <button class="btn" id="fullBtn">全屏</button>
+      <button class="btn primary" id="downloadBtn">下载 .md</button>
+    </div>
+  </div>
+
+  <main class="panes">
+    <section class="pane md-pane" id="editPane">
+      <div class="pane-head">
+        <span class="pane-title">Markdown</span>
+        <div class="pane-tools"><span class="stats" id="statsMd"></span></div>
+      </div>
+      <textarea id="editor" spellcheck="false"
+        placeholder="# 标题&#10;&#10;**加粗**、*斜体*、`行内代码`&#10;&#10;- 列表项&#10;- 另一项"></textarea>
+    </section>
+
+    <section class="pane md-pane" id="previewPane">
+      <div class="pane-head">
+        <span class="pane-title">预览</span>
+        <div class="pane-tools">
+          <span class="stats" id="statsHtml"></span>
+          <button class="btn tiny" id="tocBtn" aria-pressed="false">目录</button>
+        </div>
+      </div>
+      <div class="md-body" id="preview" contenteditable="true" spellcheck="false"
+           role="textbox" aria-multiline="true" aria-label="可直接编辑的预览区"></div>
+      <aside class="outline" id="outline" aria-hidden="true">
+        <div class="outline-head">
+          <span>目录</span>
+          <button class="outline-close" id="outlineClose" title="收起">×</button>
+        </div>
+        <div class="outline-list" id="outlineList"></div>
+      </aside>
+    </section>
+  </main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SAMPLE = [
+    '# Markdown 示例',
+    '',
+    '支持 **加粗**、*斜体*、~~删除线~~、`行内代码`，以及 [超链接](https://example.com)。',
+    '',
+    '## 列表',
+    '',
+    '- 无序列表项',
+    '  - 嵌套项',
+    '  - 又一个',
+    '- [x] 已完成的任务',
+    '- [ ] 待办的任务',
+    '',
+    '## 表格',
+    '',
+    '| 工具 | 用途 | 快捷键 |',
+    '| --- | --- | --- |',
+    '| JSON | 格式化 | ⌘⏎ |',
+    '| SQL | 排版 | ⌘⏎ |',
+    '| Diff | 对比 | ⌘⏎ |',
+    '',
+    '## 代码',
+    '',
+    '```js',
+    'function greet(name) {',
+    '  return `你好，${name}`;',
+    '}',
+    '```',
+    '',
+    '> 引用：内容只保存在浏览器本地，不会上传。',
+    '',
+    '---',
+    '',
+    '1. 有序列表第一项',
+    '2. 第二项'
+  ].join('\n');
+
+  var STORE_KEY = 'devtoolbox.md.draft.v1';
+
+  var el = {
+    editor: document.getElementById('editor'),
+    preview: document.getElementById('preview'),
+    statsMd: document.getElementById('statsMd'),
+    statsHtml: document.getElementById('statsHtml'),
+    editPane: document.getElementById('editPane'),
+    previewPane: document.getElementById('previewPane'),
+    segView: document.getElementById('segView'),
+    segBreak: document.getElementById('segBreak'),
+    tocBtn: document.getElementById('tocBtn'),
+    outline: document.getElementById('outline'),
+    outlineList: document.getElementById('outlineList'),
+    outlineClose: document.getElementById('outlineClose')
+  };
+
+  var opts = { view: 'both', breaks: false };
+
+  window.marked.setOptions({ gfm: true, breaks: opts.breaks });
+
+  function saveDraft() {
+    try { localStorage.setItem(STORE_KEY, el.editor.value); } catch (e) {}
+  }
+
+  /* ================================================================
+     一、渲染（Markdown → HTML）
+     ================================================================ */
+  function updateStats() {
+    var src = el.editor.value;
+    var lines = src ? src.split('\n').length : 0;
+    var chars = src.replace(/\s/g, '').length;
+    el.statsMd.textContent = lines + ' 行 · ' + chars + ' 字';
+    el.statsHtml.textContent = el.preview.querySelectorAll('*').length + ' 个元素';
+  }
+
+  var previewDirty = false;
+
+  function render() {
+    el.preview.innerHTML = window.marked.parse(el.editor.value);
+    previewDirty = false;
+    updateStats();
+    buildToc();
+  }
+
+  var renderSoon = TB.debounce(function () {
+    render();
+    saveDraft();
+  }, 220);
+
+  el.editor.addEventListener('input', renderSoon);
+
+  /* ================================================================
+     二、预览可直接编辑（Typora 式）：DOM → Markdown 回写
+     ================================================================ */
+  var IND = '  ';
+
+  function pad(indent) {
+    var s = '';
+    for (var i = 0; i < indent; i++) s += IND;
+    return s;
+  }
+
+  function inlineMd(node) {
+    var out = '';
+    Array.prototype.forEach.call(node.childNodes, function (n) {
+      if (n.nodeType === 3) { out += n.nodeValue; return; }
+      if (n.nodeType !== 1) return;
+      var tag = n.tagName.toLowerCase();
+
+      if (tag === 'br') { out += '  \n'; return; }
+      if (tag === 'input') return;   // 任务列表勾选框
+
+      var inner = inlineMd(n);
+      if (tag === 'strong' || tag === 'b') out += '**' + inner + '**';
+      else if (tag === 'em' || tag === 'i') out += '*' + inner + '*';
+      else if (tag === 'del' || tag === 's' || tag === 'strike') out += '~~' + inner + '~~';
+      else if (tag === 'code') out += '`' + inner + '`';
+      else if (tag === 'a') out += '[' + inner + '](' + (n.getAttribute('href') || '') + ')';
+      else if (tag === 'img') {
+        out += '![' + (n.getAttribute('alt') || '') + '](' + (n.getAttribute('src') || '') + ')';
+      } else if (tag === 'sup') out += '<sup>' + inner + '</sup>';
+      else if (tag === 'sub') out += '<sub>' + inner + '</sub>';
+      else out += inner;
+    });
+    return out;
+  }
+
+  function listMd(list, indent, out) {
+    var ordered = list.tagName.toLowerCase() === 'ol';
+    var start = parseInt(list.getAttribute('start') || '1', 10);
+    if (isNaN(start)) start = 1;
+
+    Array.prototype.forEach.call(list.children, function (li, i) {
+      if (li.tagName.toLowerCase() !== 'li') return;
+
+      var box = null, content = '', nested = [];
+      Array.prototype.forEach.call(li.childNodes, function (cn) {
+        if (cn.nodeType === 1) {
+          var t = cn.tagName.toLowerCase();
+          if (t === 'ul' || t === 'ol') { nested.push(cn); return; }
+          if (t === 'input' && cn.type === 'checkbox') { box = cn; return; }
+        }
+        content += cn.nodeType === 3 ? cn.nodeValue : inlineMd(cn);
+      });
+
+      var marker = ordered ? (start + i) + '.' : '-';
+      var line = pad(indent) + marker + ' ';
+      if (box) line += (box.checked ? '[x] ' : '[ ] ');
+      out.push(line + content.trim());
+
+      nested.forEach(function (nl) { listMd(nl, indent + 1, out); });
+    });
+  }
+
+  function tableMd(tableEl, out) {
+    var rows = [];
+    Array.prototype.forEach.call(tableEl.querySelectorAll('tr'), function (tr) {
+      var cells = [];
+      Array.prototype.forEach.call(tr.children, function (c) {
+        cells.push(inlineMd(c).trim().replace(/\|/g, '\\|'));
+      });
+      if (cells.length) rows.push(cells);
+    });
+    if (!rows.length) return;
+
+    var width = rows[0].length;
+    out.push('| ' + rows[0].join(' | ') + ' |');
+    var sep = [];
+    for (var i = 0; i < width; i++) sep.push('---');
+    out.push('| ' + sep.join(' | ') + ' |');
+    for (var r = 1; r < rows.length; r++) {
+      while (rows[r].length < width) rows[r].push('');
+      out.push('| ' + rows[r].slice(0, width).join(' | ') + ' |');
+    }
+  }
+
+  function blockMd(node, indent, out) {
+    Array.prototype.forEach.call(node.childNodes, function (n) {
+      if (n.nodeType === 3) {
+        var t = n.nodeValue.trim();
+        if (t) out.push(t);
+        return;
+      }
+      if (n.nodeType !== 1) return;
+
+      var tag = n.tagName.toLowerCase();
+
+      if (/^h[1-6]$/.test(tag)) {
+        out.push(new Array(+tag.charAt(1) + 1).join('#') + ' ' + inlineMd(n).trim());
+      } else if (tag === 'p') {
+        out.push(inlineMd(n).trim());
+      } else if (tag === 'div' || tag === 'section' || tag === 'article') {
+        // contenteditable 插入的新行常是 div
+        if (n.querySelector('ul,ol,table,pre,blockquote,h1,h2,h3,h4,h5,h6')) {
+          blockMd(n, indent, out);
+        } else {
+          var t2 = inlineMd(n).trim();
+          out.push(t2);
+        }
+      } else if (tag === 'ul' || tag === 'ol') {
+        listMd(n, indent, out);
+      } else if (tag === 'blockquote') {
+        var sub = [];
+        blockMd(n, 0, sub);
+        out.push(sub.map(function (l) { return '> ' + l; }).join('\n'));
+      } else if (tag === 'pre') {
+        var codeEl = n.querySelector('code') || n;
+        var cls = (codeEl.className || '');
+        var langMatch = /language-([\w+-]+)/.exec(cls);
+        out.push('```' + (langMatch ? langMatch[1] : ''));
+        out.push(codeEl.textContent.replace(/\n$/, ''));
+        out.push('```');
+      } else if (tag === 'hr') {
+        out.push('---');
+      } else if (tag === 'table') {
+        tableMd(n, out);
+      } else if (tag === 'input') {
+        // 忽略
+      } else {
+        var t3 = inlineMd(n).trim();
+        if (t3) out.push(t3);
+      }
+    });
+  }
+
+  function domToMarkdown(root) {
+    var out = [];
+    blockMd(root, 0, out);
+    // 压缩多余空行，保留段落间一个空行
+    var text = out.join('\n\n');
+    return text.replace(/\n{3,}/g, '\n\n').replace(/\s+$/, '');
+  }
+
+  /* 预览 DOM → Markdown 源码（同步执行，供按钮/切换视图前强制回写） */
+  function flushPreviewEdits() {
+    if (!previewDirty) return;
+    var md = domToMarkdown(el.preview);
+    if (md === el.editor.value) return;
+    el.editor.value = md;
+    previewDirty = false;
+    saveDraft();
+    updateStats();
+  }
+
+  var syncToSource = TB.debounce(function () {
+    flushPreviewEdits();
+    buildToc();
+  }, 260);
+
+  el.preview.addEventListener('input', function () {
+    previewDirty = true;
+    syncToSource();
+  });
+
+  el.preview.addEventListener('blur', function () {
+    flushPreviewEdits();
+    // 失焦后按源码重排一次，保证 Markdown 与渲染一致
+    render();
+  });
+
+  /* 预览里的链接：点击不跳转，走新标签页 */
+  el.preview.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a');
+    if (!a) return;
+    e.preventDefault();
+    var href = a.getAttribute('href') || '';
+    if (!/^https?:/i.test(href)) return;
+    try {
+      if (window.chrome && chrome.tabs && chrome.tabs.create) {
+        chrome.tabs.create({ url: href });
+        return;
+      }
+    } catch (err) {}
+    window.open(href, '_blank');
+  });
+
+  /* ================================================================
+     三、大纲目录
+     ================================================================ */
+  function tocOpen(on) {
+    if (!el.outline) return;
+    el.outline.classList.toggle('open', !!on);
+    el.outline.setAttribute('aria-hidden', on ? 'false' : 'true');
+    if (el.tocBtn) el.tocBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  }
+
+  function buildToc() {
+    if (!el.outlineList) return;
+    var heads = el.preview.querySelectorAll('h1, h2, h3, h4, h5, h6');
+    var html = [];
+
+    Array.prototype.forEach.call(heads, function (h, i) {
+      var id = 'mdh-' + i;
+      h.setAttribute('id', id);
+      var lvl = Math.min(6, +h.tagName.charAt(1));
+      var text = (h.textContent || '').trim() || '(无标题)';
+      html.push(
+        '<a class="outline-item" data-target="' + id + '" data-level="' + lvl + '"' +
+        ' style="padding-left:' + (6 + (lvl - 1) * 9) + 'px">' +
+        TB.escapeHtml(text) + '</a>'
+      );
+    });
+
+    el.outlineList.innerHTML = html.length
+      ? html.join('')
+      : '<div class="outline-empty">还没有标题，用 # 添加</div>';
+
+    Array.prototype.forEach.call(el.outlineList.querySelectorAll('.outline-item'), function (a) {
+      a.addEventListener('click', function () {
+        var id = a.getAttribute('data-target');
+        var h = document.getElementById(id);
+        if (!h) return;
+        var delta = h.getBoundingClientRect().top - el.preview.getBoundingClientRect().top;
+        el.preview.scrollTop = Math.max(0, el.preview.scrollTop + delta - 10);
+        highlightToc();
+      });
+    });
+
+    highlightToc();
+  }
+
+  function highlightToc() {
+    if (!el.outlineList) return;
+    var items = el.outlineList.querySelectorAll('.outline-item');
+    if (!items.length) return;
+
+    var headTop = el.preview.getBoundingClientRect().top;
+    var activeId = null;
+
+    Array.prototype.forEach.call(items, function (a) {
+      var h = document.getElementById(a.getAttribute('data-target'));
+      if (!h) return;
+      if (h.getBoundingClientRect().top - headTop <= 24) activeId = a.getAttribute('data-target');
+      a.classList.remove('active');
+    });
+
+    if (!activeId && items.length) activeId = items[0].getAttribute('data-target');
+    if (activeId) {
+      var cur = el.outlineList.querySelector('.outline-item[data-target="' + activeId + '"]');
+      if (cur) cur.classList.add('active');
+    }
+  }
+
+  if (el.tocBtn) {
+    el.tocBtn.addEventListener('click', function () {
+      tocOpen(!el.outline.classList.contains('open'));
+    });
+  }
+  if (el.outlineClose) {
+    el.outlineClose.addEventListener('click', function () { tocOpen(false); });
+  }
+
+  var hlTick = false;
+  el.preview.addEventListener('scroll', function () {
+    if (hlTick) return;
+    hlTick = true;
+    requestAnimationFrame(function () { hlTick = false; highlightToc(); });
+  });
+
+  /* ================================================================
+     四、编辑 ↔ 预览 同步滚动
+     ================================================================ */
+  var syncing = false;
+
+  function bindSync(src, dst) {
+    src.addEventListener('scroll', function () {
+      if (syncing || !dst) return;
+      syncing = true;
+      var srcMax = src.scrollHeight - src.clientHeight;
+      var dstMax = dst.scrollHeight - dst.clientHeight;
+      if (srcMax > 0 && dstMax > 0) {
+        dst.scrollTop = (src.scrollTop / srcMax) * dstMax;
+      }
+      syncing = false;
+    });
+  }
+  bindSync(el.editor, el.preview);
+  bindSync(el.preview, el.editor);
+
+  el.editor.addEventListener('keydown', function (e) {
+    if (e.key !== 'Tab' || e.metaKey || e.ctrlKey || e.altKey) return;
+    e.preventDefault();
+    var s = this.selectionStart;
+    this.setRangeText('  ', s, this.selectionEnd, 'end');
+    this.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  /* ================================================================
+     五、视图
+     ================================================================ */
+  function applyView(v) {
+    flushPreviewEdits();
+    opts.view = v;
+    el.editPane.style.display = v === 'preview' ? 'none' : '';
+    el.previewPane.style.display = v === 'edit' ? 'none' : '';
+    var b = document.body;
+    b.classList.toggle('view-edit', v === 'edit');
+    b.classList.toggle('view-preview', v === 'preview');
+    b.classList.toggle('view-both', v === 'both');
+    if (v === 'edit') tocOpen(false);
+    render();
+  }
+
+  TB.bindSeg(el.segView, opts.view, applyView);
+  TB.bindFullscreenButton(document.getElementById('fullBtn'));
+  TB.bindSeg(el.segBreak, opts.breaks ? 'hard' : 'soft', function (v) {
+    opts.breaks = (v === 'hard');
+    window.marked.setOptions({ gfm: true, breaks: opts.breaks });
+    render();
+  });
+
+  /* ================================================================
+     六、按钮
+     ================================================================ */
+  document.getElementById('sampleBtn').addEventListener('click', function () {
+    el.editor.value = SAMPLE;
+    render(); saveDraft();
+    TB.toast('已载入示例');
+  });
+
+  document.getElementById('clearBtn').addEventListener('click', function () {
+    el.editor.value = '';
+    render(); saveDraft();
+    el.editor.focus();
+  });
+
+  document.getElementById('copyMdBtn').addEventListener('click', function () {
+    render();
+    flushPreviewEdits();
+    TB.copyWithToast(el.editor.value, 'Markdown 源码');
+  });
+
+  document.getElementById('copyHtmlBtn').addEventListener('click', function () {
+    TB.copyWithToast(el.preview.innerHTML, '渲染后的 HTML');
+  });
+
+  document.getElementById('downloadBtn').addEventListener('click', function () {
+    flushPreviewEdits();
+    var text = el.editor.value;
+    if (!text.trim()) { TB.toast('还没有内容可下载'); return; }
+    var firstLine = text.split('\n').find(function (l) { return l.trim(); }) || 'note';
+    var name = firstLine.replace(/^#+\s*/, '').replace(/[\/\\:*?"<>|]/g, '').trim().slice(0, 40) || 'note';
+    var blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url; a.download = name + '.md';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    TB.toast('已下载 ' + name + '.md');
+  });
+
+  /* ================================================================
+     七、启动
+     ================================================================ */
+  /* 支持从 URL hash 直接载入本地文件：
+     #md=<urlencoded markdown>&name=<文件名> */
+  var hashMd = null, hashName = '';
+  var hm = /[#&]md=([^&]*)/.exec(location.hash || '');
+  if (hm) {
+    try { hashMd = decodeURIComponent(hm[1]); } catch (e) {}
+    var nm = /[#&]name=([^&]*)/.exec(location.hash || '');
+    if (nm) { try { hashName = decodeURIComponent(nm[1]); } catch (e2) {} }
+  }
+
+  var draft = null;
+  try { draft = localStorage.getItem(STORE_KEY); } catch (e) {}
+  el.editor.value = hashMd != null ? hashMd : (draft != null ? draft : SAMPLE);
+  render();
+  saveDraft();
+
+  if (hashMd != null) {
+    if (hashName) document.title = hashName + ' · Markdown 编辑预览 · DevToolbox';
+    TB.toast('已载入' + (hashName ? ' ' + hashName : '本地 Markdown 文件'));
+  }
+})();
+</script>
+</body>
+</html>

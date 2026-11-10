@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>DevToolbox · 工具列表</title>
+<style>
+  /* 深色（默认） */
+  :root {
+    --bg: #0b0d12;
+    --card: #11141b;
+    --card-hover: #171c25;
+    --border: #232a37;
+    --fg: #d8dde9;
+    --muted: #6d7889;
+    --accent: #6366f1;
+    --tile: rgba(99, 102, 241, .16);
+    --tile-fg: #a5b4fc;
+  }
+  :root[data-theme="light"] {
+    --bg: #f6f7fa;
+    --card: #ffffff;
+    --card-hover: #f0f3f8;
+    --border: #e2e7ef;
+    --fg: #26303f;
+    --muted: #77818f;
+    --accent: #5b5bd6;
+    --tile: #ede9fe;
+    --tile-fg: #5b5bd6;
+  }
+  :root[data-theme="eye"] {
+    --bg: #c9e2c6;
+    --card: #d9eed6;
+    --card-hover: #cfe6cb;
+    --border: #b3cfb0;
+    --fg: #2f3b2f;
+    --muted: #5f7a5f;
+    --accent: #2e7d32;
+    --tile: rgba(46, 125, 50, .16);
+    --tile-fg: #2e7d32;
+  }
+  :root[data-theme="solar"] {
+    --bg: #f3ecda;
+    --card: #fbf6e9;
+    --card-hover: #f6efdf;
+    --border: #e0d4b6;
+    --fg: #4a3f2a;
+    --muted: #8d8064;
+    --accent: #b45309;
+    --tile: rgba(180, 83, 9, .14);
+    --tile-fg: #b45309;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    width: 340px;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    transition: background .18s ease, color .18s ease;
+  }
+
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px 10px;
+  }
+  .mark {
+    width: 30px; height: 30px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--tile-fg));
+    display: grid; place-items: center;
+    flex: 0 0 auto;
+  }
+  .mark svg { width: 17px; height: 17px; }
+  .head h1 {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: .2px;
+  }
+  .head p {
+    margin: 1px 0 0;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .head-btns { margin-left: auto; display: flex; gap: 6px; }
+  .mini-btn {
+    width: 30px; height: 30px;
+    display: grid; place-items: center;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    border-radius: 8px;
+    cursor: pointer;
+    padding: 0;
+    transition: color .15s, border-color .15s, background .15s;
+  }
+  .mini-btn:hover { color: var(--fg); border-color: var(--accent); background: var(--card); }
+  .mini-btn svg { width: 15px; height: 15px; }
+
+  .search { padding: 0 14px 10px; }
+  .search input {
+    width: 100%;
+    padding: 8px 11px;
+    font: inherit;
+    font-size: 12.5px;
+    color: var(--fg);
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    outline: none;
+    transition: border-color .15s, box-shadow .15s;
+  }
+  .search input::placeholder { color: var(--muted); opacity: .85; }
+  .search input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, .14);
+  }
+
+  .list {
+    margin: 0;
+    padding: 0 10px 8px;
+    list-style: none;
+    max-height: 340px;
+    overflow-y: auto;
+  }
+  .list li + li { margin-top: 6px; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--card);
+    text-decoration: none;
+    color: inherit;
+    transition: background .15s, border-color .15s, transform .12s;
+  }
+  .row:hover {
+    background: var(--card-hover);
+    border-color: var(--accent);
+    transform: translateY(-1px);
+  }
+  .row:active { transform: translateY(0); }
+  .tile {
+    width: 30px; height: 30px;
+    flex: 0 0 auto;
+    border-radius: 8px;
+    background: var(--tile);
+    color: var(--tile-fg);
+    display: grid; place-items: center;
+  }
+  .tile svg { width: 15px; height: 15px; }
+  .txt { min-width: 0; }
+  .txt b { display: block; font-size: 12.8px; font-weight: 600; }
+  .txt i {
+    display: block;
+    font-style: normal;
+    font-size: 11.5px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .go {
+    margin-left: auto;
+    color: var(--muted);
+    font-size: 13px;
+    opacity: 0;
+    transition: opacity .15s;
+  }
+  .row:hover .go { opacity: 1; color: var(--tile-fg); }
+
+  .empty {
+    display: none;
+    padding: 22px 14px;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+  .empty.show { display: block; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 9px 14px 11px;
+    font-size: 11px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  footer .dot { width: 5px; height: 5px; border-radius: 50%; background: #22c55e; flex: 0 0 auto; }
+
+  .list::-webkit-scrollbar { width: 8px; }
+  .list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+
+  <div class="head">
+    <div class="mark">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2"
+           stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14M5 12h4M15 12h4"/>
+      </svg>
+    </div>
+    <div>
+      <h1>DevToolbox</h1>
+      <p>开发者的小工具箱</p>
+    </div>
+    <div class="head-btns">
+      <button class="mini-btn" id="themeBtn" title="切换主题">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+        </svg>
+      </button>
+      <button class="mini-btn" id="sideBtn" title="在侧边栏中打开">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="4" width="18" height="16" rx="2"/>
+          <path d="M15 4v16"/>
+        </svg>
+      </button>
+      <button class="mini-btn" id="homeBtn" title="在标签页中打开（全屏）">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+             stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 10.5 12 3l9 7.5M5.5 9.5V20h13V9.5"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="search">
+    <input id="q" type="text" placeholder="搜索工具，如 json / diff / sql" autocomplete="off" autofocus>
+  </div>
+
+  <ul class="list" id="list">
+    <li data-keys="json 格式化 压缩 校验 排序 美化 format">
+      <a class="row" href="tools/json.html" target="_blank">
+        <span class="tile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M9 7l-4 5 4 5M15 7l4 5-4 5"/>
+          </svg>
+        </span>
+        <span class="txt"><b>JSON 格式化</b><i>格式化、压缩、校验，错误定位行列</i></span>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li data-keys="diff 对比 文本 compare 差异 比较">
+      <a class="row" href="tools/diff.html" target="_blank">
+        <span class="tile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 8h13M14 4l3.5 4L14 12M20 16H7M10 12l-3.5 4L10 20"/>
+          </svg>
+        </span>
+        <span class="txt"><b>文本对比</b><i>逐行对比、高亮差异、同步滚动</i></span>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li data-keys="sql 格式化 数据库 hive spark mysql 美化">
+      <a class="row" href="tools/sql.html" target="_blank">
+        <span class="tile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5.5" rx="7.5" ry="3"/>
+            <path d="M4.5 5.5v13c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3v-13M4.5 12c0 1.66 3.36 3 7.5 3s7.5-1.34 7.5-3"/>
+          </svg>
+        </span>
+        <span class="txt"><b>SQL 格式化</b><i>关键字大小写、换行缩进、多方言</i></span>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li data-keys="date 日期 时间 时间戳 timestamp 转化 时区">
+      <a class="row" href="tools/date.html" target="_blank">
+        <span class="tile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>
+          </svg>
+        </span>
+        <span class="txt"><b>日期转化</b><i>时间戳 ↔ 日期，时区对照</i></span>
+        <span class="go">→</span>
+      </a>
+    </li>
+
+    <li data-keys="markdown md 编辑器 预览 编辑 笔记">
+      <a class="row" href="tools/md.html" target="_blank">
+        <span class="tile">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+               stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 17V8l4 5 4-5v9M19 7v8M19 15l-2.5-2.5M19 15l2.5-2.5"/>
+          </svg>
+        </span>
+        <span class="txt"><b>Markdown 编辑器</b><i>双栏实时预览、GFM、代码高亮</i></span>
+        <span class="go">→</span>
+      </a>
+    </li>
+  </ul>
+
+  <div class="empty" id="empty">没有匹配的工具</div>
+
+  <footer><span class="dot"></span>所有数据都在本地浏览器处理，不上传</footer>
+
+  <script src="popup-1.js"></script>
+</body>
+</html>

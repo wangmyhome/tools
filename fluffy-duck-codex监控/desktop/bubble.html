@@ -1,0 +1,58 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin:0; height:100%; background:transparent; overflow:hidden; user-select:none; }
+  .quack{
+    position:fixed; left:50%; bottom:8px; visibility:hidden;
+    transform:translateX(-50%);
+    font-weight:800; font-size:14px; color:#7a4a00;
+    background:rgba(255,255,255,.94);
+    border:2px solid #ffbe3d; border-radius:12px;
+    padding:5px 11px; white-space:nowrap;
+  }
+</style>
+</head>
+<body>
+<div class="quack" id="b"></div>
+<script>
+/* 气泡页：接指令 → 内容实测上报（主进程据此定窗尺寸/位置） → 播浮起淡出 → 完毕回报 */
+/* 长句不折行（nowrap）；窗体尺寸由主进程按实测内容设置，永不切字 */
+const b = document.getElementById('b');
+let timer = null;
+function stop(){
+  if(timer){ clearTimeout(timer); timer = null; }
+  try { b.getAnimations().forEach(a => a.cancel()); } catch {}
+}
+window.yaliya.onBubble(({ text, rise, k = 1 }) => {
+  stop();
+  b.textContent = text;
+  /* 档位比例 k（1=超大号）：字号/内距/描边/圆角/浮程全部随小鸭档位同步缩放 */
+  const fs = Math.max(7, Math.round(14 * k));
+  const pv = Math.max(2, Math.round(fs * 0.38));
+  const ph = Math.max(5, Math.round(fs * 0.78));
+  b.style.fontSize = fs + 'px';
+  b.style.padding = pv + 'px ' + ph + 'px';
+  b.style.borderWidth = Math.max(1, Math.round(2 * k)) + 'px';
+  b.style.borderRadius = Math.max(6, Math.round(12 * k)) + 'px';
+  b.style.visibility = 'visible';
+  const riseEff = Math.round(rise * Math.max(0.5, k));   /* 上浮行程同步缩放（0.5 下限保留动感） */
+  const w = Math.ceil(b.offsetWidth * 1.12 + 8);         /* 窗宽=内容112%+8：弹跳放大1.08峰值也绝不左右削边 */
+  const h = Math.ceil(b.offsetHeight + riseEff + 16);    /* 窗体高度含整段上浮行程 */
+  window.yaliya.bubbleSize(w, h);
+  b.animate([
+    { opacity: 0,   transform: 'translateX(-50%) translateY(8px) scale(.6)' },
+    { opacity: 1,   transform: 'translateX(-50%) translateY(-4px) scale(1.08)', offset: 0.16 },
+    { opacity: .92, transform: 'translateX(-50%) translateY(' + (-riseEff * 0.53) + 'px) scale(1)', offset: 0.58 },
+    { opacity: 0,   transform: 'translateX(-50%) translateY(' + (-riseEff) + 'px) scale(.96)' },
+  ], { duration: 1300, easing: 'ease-out', fill: 'forwards' });
+  timer = setTimeout(() => {
+    timer = null;
+    b.style.visibility = 'hidden';
+    window.yaliya.bubbleDone();
+  }, 1550);
+});
+</script>
+</body>
+</html>

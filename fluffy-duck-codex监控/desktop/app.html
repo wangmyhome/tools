@@ -1,0 +1,1233 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鸭力鸭 YaliYa · 桌面小黄鸭</title>
+<style>
+  :root{
+    --ink:#6b4a00;
+    --brand1:#ffcf3f;
+    --brand2:#ffab00;
+  }
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; overflow:hidden; }
+  body{
+    font-family: ui-rounded, "PingFang SC", "Hiragino Sans GB", -apple-system, "Segoe UI", sans-serif;
+    background:
+      radial-gradient(120% 90% at 50% 0%, #fff9e8 0%, #ffeebf 45%, #ffdf9a 100%);
+    color: var(--ink);
+    user-select: none;
+  }
+  canvas{ position:fixed; inset:0; display:block; }
+
+  .badge{
+    position:fixed; top:18px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:10px;
+    padding:9px 18px 9px 12px;
+    background:rgba(255,255,255,.72);
+    backdrop-filter: blur(10px);
+    border:1px solid rgba(255,190,60,.55);
+    border-radius:999px;
+    box-shadow:0 8px 24px rgba(180,120,0,.14);
+    z-index:10;
+  }
+  .badge svg{ width:34px; height:34px; }
+  .badge .name{ font-weight:800; font-size:16px; letter-spacing:1px; }
+  .badge .en{ font-size:11px; opacity:.65; font-weight:600; letter-spacing:.5px; }
+  .statebar{
+    position:fixed; bottom:26px; left:50%; transform:translateX(-50%);
+    display:flex; gap:8px; align-items:center; padding:10px;
+    background:rgba(255,255,255,.6);
+    backdrop-filter: blur(12px);
+    border:1px solid rgba(255,190,60,.5);
+    border-radius:999px;
+    box-shadow:0 12px 32px rgba(180,120,0,.16);
+    z-index:10;
+  }
+  .statebar button{
+    appearance:none; border:1px solid rgba(160,110,0,.16);
+    background:rgba(255,255,255,.85);
+    color:var(--ink);
+    font-family:inherit; font-size:15px; font-weight:700;
+    padding:10px 18px; border-radius:999px; cursor:pointer;
+    transition:transform .15s, box-shadow .15s, background .2s;
+    white-space:nowrap;
+  }
+  .statebar button:hover{ transform:translateY(-2px); }
+  .statebar button.active{
+    background:linear-gradient(180deg, var(--brand1), var(--brand2));
+    border-color:rgba(150,90,0,.35);
+    box-shadow:0 6px 16px rgba(255,160,0,.45), inset 0 1px 0 rgba(255,255,255,.5);
+    transform:translateY(-3px);
+  }
+  .statebar button.more{
+    padding:10px 14px; background:rgba(255,255,255,.5);
+  }
+  .morepanel{
+    position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
+    display:none; grid-template-columns:repeat(4, 1fr); gap:8px;
+    padding:16px;
+    background:rgba(255,255,255,.78);
+    backdrop-filter: blur(14px);
+    border:1px solid rgba(255,190,60,.5);
+    border-radius:22px;
+    box-shadow:0 14px 36px rgba(180,120,0,.2);
+    z-index:11;
+  }
+  .morepanel.open{ display:grid; }
+  .morepanel button{
+    appearance:none; border:1px solid rgba(160,110,0,.16);
+    background:rgba(255,255,255,.9);
+    color:var(--ink); font-family:inherit; font-size:14px; font-weight:700;
+    padding:10px 16px; border-radius:14px; cursor:pointer;
+  }
+  .morepanel button:hover{ background:#fff; transform:translateY(-1px); }
+  .morepanel .title{
+    grid-column:1/-1; font-size:12px; font-weight:800; opacity:.55;
+    letter-spacing:2px; text-align:center; margin-bottom:2px;
+  }
+
+  .skinpanel{
+    position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
+    display:none; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center;
+    max-width:min(520px, calc(100vw - 24px));
+    padding:14px 16px;
+    background:rgba(255,255,255,.78);
+    backdrop-filter: blur(14px);
+    border:1px solid rgba(255,190,60,.5);
+    border-radius:22px;
+    box-shadow:0 14px 36px rgba(180,120,0,.2);
+    z-index:11;
+  }
+  .skinpanel.open{ display:flex; }
+  .skinpanel .title{
+    width:100%; font-size:12px; font-weight:800; opacity:.55;
+    letter-spacing:2px; text-align:center; margin-bottom:2px;
+  }
+  .skinpanel button{
+    appearance:none; border:2px solid rgba(160,110,0,.2);
+    width:44px; height:44px; border-radius:50%; cursor:pointer;
+    box-shadow:inset 0 2px 6px rgba(255,255,255,.55), 0 4px 10px rgba(120,80,0,.12);
+    transition:transform .15s, box-shadow .15s, border-color .15s;
+  }
+  .skinpanel button:hover{ transform:translateY(-2px) scale(1.06); }
+  .skinpanel button.active{
+    border-color:#c87800;
+    box-shadow:0 0 0 3px rgba(255,190,60,.55), inset 0 2px 6px rgba(255,255,255,.55);
+    transform:translateY(-2px) scale(1.08);
+  }
+  .skinpanel button .tip{
+    position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0);
+  }
+
+  .hint{
+    position:fixed; bottom:8px; left:0; right:0; text-align:center;
+    font-size:12px; opacity:.55; z-index:10; letter-spacing:.5px;
+  }
+
+  .quack{
+    position:fixed; z-index:20; pointer-events:none;
+    font-weight:800; font-size:18px; color:#b06a00;
+    background:rgba(255,255,255,.9);
+    border:2px solid #ffbe3d; border-radius:14px;
+    padding:5px 12px;
+    animation:floatUp 1.3s ease-out forwards;
+    white-space:nowrap;
+  }
+  @keyframes floatUp{
+    0%{ opacity:0; transform:translate(-50%, 6px) scale(.6); }
+    18%{ opacity:1; transform:translate(-50%, -4px) scale(1.08); }
+    100%{ opacity:0; transform:translate(-50%, -70px) scale(1); }
+  }
+</style>
+</head>
+<body>
+
+<div class="badge">
+  <svg viewBox="0 0 64 64" aria-hidden="true">
+    <defs>
+      <linearGradient id="bgG" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#ffd44d"/><stop offset="1" stop-color="#ffab00"/>
+      </linearGradient>
+    </defs>
+    <rect x="2" y="2" width="60" height="60" rx="18" fill="url(#bgG)"/>
+    <path d="M32 12c9 0 16 7 16 16 0 3-.7 5.5-2 7.8H18c-1.3-2.3-2-4.8-2-7.8 0-9 7-16 16-16z"
+          fill="#ffe066" stroke="#8a5a00" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M18 33c-4 2-7 5.4-7 8.4 0 6 9.4 9.6 21 9.6s21-3.6 21-9.6c0-3-3-6.4-7-8.4"
+          fill="#ffe066" stroke="#8a5a00" stroke-width="2.6" stroke-linejoin="round"/>
+    <ellipse cx="32" cy="36" rx="12.5" ry="6.5" fill="#ff8a00" stroke="#8a4a00" stroke-width="2.2"/>
+    <path d="M20.5 34.5h23" stroke="#8a4a00" stroke-width="2" stroke-linecap="round"/>
+    <circle cx="24" cy="24" r="3.4" fill="#231a00"/><circle cx="40" cy="24" r="3.4" fill="#231a00"/>
+    <circle cx="25.2" cy="22.8" r="1.2" fill="#fff"/>
+    <circle cx="41.2" cy="22.8" r="1.2" fill="#fff"/>
+    <ellipse cx="18.5" cy="31" rx="3" ry="2" fill="#ff9d9d" opacity=".8"/>
+    <ellipse cx="45.5" cy="31" rx="3" ry="2" fill="#ff9d9d" opacity=".8"/>
+  </svg>
+  <div>
+    <div class="name">鸭力鸭</div>
+    <div class="en">YALIYA · DESKTOP DUCK</div>
+  </div>
+  <div class="dot" style="width:7px;height:7px;border-radius:50%;background:#57c26a;"></div>
+  <div id="status">正在发呆摸鱼，嘎～</div>
+</div>
+
+<div class="statebar" id="statebar">
+  <button data-state="idle" class="active">😌 空闲</button>
+  <button data-state="run">🏃‍♂️ 奔跑</button>
+  <button data-state="cry">😭 哭泣</button>
+  <button data-state="sleep">😴 打盹</button>
+  <button data-state="celebrate">🎉 庆祝</button>
+  <button data-state="angry">😤 生气</button>
+  <button class="more" id="skinBtn">🎨 皮肤</button>
+  <button class="more" id="moreBtn">⌕ 更多</button>
+</div>
+
+<div class="skinpanel" id="skinpanel" role="listbox" aria-label="小鸭皮肤"></div>
+
+<div class="morepanel" id="morepanel">
+  <div class="title">更多状态 & 彩蛋</div>
+  <button data-state="overload">😵 躺平</button>
+  <button data-state="bath">🛁 泡澡</button>
+  <button data-state="playdead">💀 装死</button>
+  <button data-state="boss">🤫 装正经</button>
+</div>
+
+<div class="hint">1~6 切换基础状态 · B 装正经 · Esc 恢复空闲 · 点小鸭说话 · 🎨 换皮肤 · 挂机会自己睡着</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ============ 渲染基础 ============ */
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x000000, 0);
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(34, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 1.9, 6.0);
+
+const hemi = new THREE.HemisphereLight(0xfff6e0, 0xddaa55, 0.85);
+const key  = new THREE.DirectionalLight(0xffffff, 1.5);  key.position.set(2.2, 4.5, 3.0);
+const fill = new THREE.DirectionalLight(0xffe9c4, 0.5);  fill.position.set(-3.0, 2.0, -2.5);
+scene.add(hemi, key, fill);
+
+/* ============ 地面与影子 ============ */
+function radialTexture(inner, outer){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(128,128,0, 128,128,128);
+  grad.addColorStop(0, inner); grad.addColorStop(1, outer);
+  g.fillStyle = grad; g.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+}
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(16, 48),
+  new THREE.MeshBasicMaterial({
+    map: radialTexture('rgba(255,236,180,0.85)', 'rgba(255,236,180,0)'),
+    transparent:true, depthWrite:false
+  })
+);
+floor.rotation.x = -Math.PI/2; floor.position.y = -0.01;
+scene.add(floor);
+
+const shadow = new THREE.Mesh(
+  new THREE.CircleGeometry(1.7, 40),
+  new THREE.MeshBasicMaterial({
+    map: radialTexture('rgba(120,70,0,0.4)', 'rgba(120,70,0,0)'),
+    transparent:true, depthWrite:false
+  })
+);
+shadow.rotation.x = -Math.PI/2;
+scene.add(shadow);
+
+/* ============ 毛发 Shader（壳层法）============ */
+const NOISE_GLSL = `
+  float hash13(vec3 p){
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float noise3(vec3 x){
+    vec3 i = floor(x); vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash13(i + vec3(0,0,0)), hash13(i + vec3(1,0,0)), f.x),
+          mix(hash13(i + vec3(0,1,0)), hash13(i + vec3(1,1,0)), f.x), f.y),
+      mix(mix(hash13(i + vec3(0,0,1)), hash13(i + vec3(1,0,1)), f.x),
+          mix(hash13(i + vec3(0,1,1)), hash13(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+  float fbm(vec3 p){
+    float v = 0.0, a = 0.5;
+    for(int i = 0; i < 3; i++){ v += a * noise3(p); p *= 2.03; a *= 0.5; }
+    return v;
+  }
+`;
+const FUR_VERT = /* glsl */`
+  uniform float uShell;
+  uniform float uFurLength;
+  varying vec3 vWPos;
+  varying vec3 vWNormal;
+  void main(){
+    float s = uShell;
+    vec3 disp = normal * (s * uFurLength) + vec3(0.0, -0.45, 0.0) * s * s * uFurLength;
+    vec4 wp = modelMatrix * vec4(position + disp, 1.0);
+    vWPos    = wp.xyz;
+    vWNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+const FUR_FRAG = /* glsl */`
+  uniform vec3  uColor;
+  uniform float uShell;
+  uniform float uTime;
+  uniform float uNoiseScale;
+  varying vec3 vWPos;
+  varying vec3 vWNormal;
+  ${NOISE_GLSL}
+  void main(){
+    vec3 sp = vWPos * uNoiseScale + vec3(uTime * 0.12, uTime * 0.08, -uTime * 0.1);
+    float n = fbm(sp + uShell * 2.2);
+    n = clamp((n - 0.14) * 1.4, 0.0, 1.0);
+    float density = step(uShell, n * mix(1.3, 0.9, uShell));
+    if(density < 0.5) discard;
+    vec3 N = normalize(vWNormal);
+    vec3 V = normalize(cameraPosition - vWPos);
+    float d1  = clamp(dot(N, normalize(vec3( 0.45, 0.75, 0.6))), 0.0, 1.0);
+    float d2  = clamp(dot(N, normalize(vec3(-0.60, 0.25,-0.55))), 0.0, 1.0);
+    float rim = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 2.0);
+    vec3 col = mix(uColor * 0.7, uColor * 1.28, uShell);
+    col *= (0.32 + 0.85 * d1 + 0.3 * d2 + 0.3 * rim);
+    col = pow(col, vec3(0.4545));
+    gl_FragColor = vec4(col, 1.0 - uShell * 0.12);
+  }
+`;
+const furMats = [];
+function furMaterial(colorHex, shell, furLength, noiseScale){
+  const m = new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, side:THREE.FrontSide,
+    uniforms:{
+      uShell:{ value: shell },
+      uFurLength:{ value: furLength },
+      uNoiseScale:{ value: noiseScale },
+      uColor:{ value: new THREE.Color(colorHex) },
+      uTime:{ value: 0 },
+    },
+    vertexShader: FUR_VERT,
+    fragmentShader: FUR_FRAG,
+  });
+  furMats.push(m);
+  return m;
+}
+const skinMats = { body: [], wing: [] };
+function makeFurPart(geometry, { color, furLength, shells, noiseScale }, slot = 'body'){
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(geometry,
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.78), roughness:1.0 }));
+  skinMats[slot].push({ m: base.material, base: true });
+  group.add(base);
+  for(let i = 1; i <= shells; i++){
+    const fm = furMaterial(color, i / shells, furLength, noiseScale);
+    skinMats[slot].push({ m: fm, base: false });
+    const mesh = new THREE.Mesh(geometry, fm);
+    mesh.renderOrder = i;
+    group.add(mesh);
+  }
+  return group;
+}
+function shapedSphere(r, sx, sy, sz, seg = 36){
+  const g = new THREE.SphereGeometry(r, seg, Math.round(seg * 0.72));
+  g.scale(sx, sy, sz);
+  g.computeVertexNormals();
+  return g;
+}
+
+/* ============ 搭建小鸭 ============ */
+const duck = new THREE.Group();
+const bodyPivot = new THREE.Group();
+duck.add(bodyPivot);
+scene.add(duck);
+
+const Y_BODY = '#ffd34e', Y_WING = '#f9c53f';
+
+const body = makeFurPart(shapedSphere(1, 1.18, 0.92, 1.02, 48), {
+  color:Y_BODY, furLength:0.15, shells:22, noiseScale:8.5
+}, 'body');
+body.position.y = 0.98;
+bodyPivot.add(body);
+
+const headGroup = new THREE.Group();
+headGroup.position.set(0, 1.78, 0.24);
+bodyPivot.add(headGroup);
+
+const head = makeFurPart(shapedSphere(0.6, 1.0, 0.97, 0.97, 40), {
+  color:Y_BODY, furLength:0.12, shells:20, noiseScale:9.5
+}, 'body');
+headGroup.add(head);
+
+/* 嘴 */
+const beakUpperMat = new THREE.MeshStandardMaterial({ color:0xff8a00, roughness:0.35 });
+const beakUpper = new THREE.Mesh(shapedSphere(1, 0.5, 0.16, 0.36, 24), beakUpperMat);
+beakUpper.position.set(0, -0.02, 0.60);
+const beakLowerMat = new THREE.MeshStandardMaterial({ color:0xf07800, roughness:0.4 });
+const beakLower = new THREE.Mesh(shapedSphere(1, 0.42, 0.10, 0.30, 20), beakLowerMat);
+beakLower.position.set(0, -0.14, 0.57);
+headGroup.add(beakUpper, beakLower);
+
+/* 眼睛 */
+const eyeMat = new THREE.MeshStandardMaterial({ color:0x1c1400, roughness:0.15 });
+const shineMat = new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0xffffff, emissiveIntensity:0.35, roughness:0.1 });
+function makeEye(side){
+  const g = new THREE.Group();
+  g.position.set(0.28 * side, 0.08, 0.54);          /* 第一版：贴着嘴上缘 */
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), eyeMat);
+  pupil.scale.z = 0.4;
+  const shine = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), shineMat);
+  shine.position.set(0.03 * side, 0.04, 0.085);
+  g.add(pupil, shine);
+  g.userData.shine = shine;   // tick 里按「实际眼开度」控制显隐
+  headGroup.add(g);
+  return g;
+}
+const eyeL = makeEye(-1), eyeR = makeEye(1);
+
+/* 闭眼线（睡眠/眨眼时显示） */
+const lidMat = new THREE.MeshStandardMaterial({ color:0x2b1f00, roughness:0.6 });
+const lids = new THREE.Group();
+for(const s of [-1, 1]){
+  const lid = new THREE.Mesh(new THREE.TorusGeometry(0.092, 0.02, 8, 20, Math.PI), lidMat);
+  lid.position.set(0.28 * s, 0.20, 0.56);   /* 悬在嘴上缘上方的眼位外沿，缸嘴太大会被埋 */
+  lid.rotation.z = Math.PI;   // 开口朝下 = 下弯的闭眼弧线
+  lids.add(lid);
+}
+lids.visible = false;
+headGroup.add(lids);
+
+/* 腮红 */
+const blushMat = new THREE.MeshStandardMaterial({ color:0xff9d9d, roughness:0.9, transparent:true, opacity:0.75 });
+for(const s of [-1, 1]){
+  const b = new THREE.Mesh(shapedSphere(1, 0.17, 0.09, 0.06, 16), blushMat);
+  b.position.set(0.43 * s, -0.06, 0.44);
+  headGroup.add(b);
+}
+
+/* 呆毛 */
+for(const [x, z, tilt] of [[0, 0.02, 0], [-0.15, 0.05, 0.5], [0.14, 0.06, -0.5]]){
+  const tuft = makeFurPart(shapedSphere(1, 0.10, 0.20, 0.10, 14), {
+    color:Y_BODY, furLength:0.06, shells:8, noiseScale:12.0
+  }, 'body');
+  tuft.position.set(x, 0.58, 0.02);
+  tuft.rotation.z = tilt;
+  headGroup.add(tuft);
+}
+
+/* 翅膀 */
+const wingGeo = shapedSphere(1, 0.17, 0.5, 0.72, 24);
+wingGeo.translate(0, -0.42, 0);
+const wingL = new THREE.Group(); wingL.position.set(-1.02, 1.30, -0.02);
+const wingR = new THREE.Group(); wingR.position.set( 1.02, 1.30, -0.02);
+const wingMeshL = makeFurPart(wingGeo, { color:Y_WING, furLength:0.085, shells:12, noiseScale:9.0 }, 'wing');
+const wingMeshR = makeFurPart(wingGeo, { color:Y_WING, furLength:0.085, shells:12, noiseScale:9.0 }, 'wing');
+wingL.add(wingMeshL); wingR.add(wingMeshR);
+bodyPivot.add(wingL, wingR);
+
+/* 尾巴 */
+const tail = makeFurPart(shapedSphere(1, 0.30, 0.26, 0.44, 20), {
+  color:Y_WING, furLength:0.12, shells:12, noiseScale:8.0
+}, 'wing');
+tail.position.set(0, 1.30, -1.02);
+tail.rotation.x = -0.75;
+bodyPivot.add(tail);
+
+/* 脚蹼 */
+const footMat = new THREE.MeshStandardMaterial({ color:0xff8a00, roughness:0.45 });
+const feet = [];
+for(const s of [-1, 1]){
+  const pivot = new THREE.Group();
+  pivot.position.set(0.34 * s, 0.05, 0.12);
+  const foot = new THREE.Mesh(shapedSphere(1, 0.18, 0.06, 0.34, 16), footMat);
+  foot.position.z = 0.10;
+  pivot.add(foot);
+  bodyPivot.add(pivot);
+  feet.push(pivot);
+}
+
+/* ============ 皮肤（与桌宠同款配色）============ */
+const SKINS = {
+  yellow: { body:'#ffd34e', wing:'#f9c53f', beakU:0xff8a00, beakL:0xf07800, foot:0xff8a00 },
+  cream:  { body:'#fff6e0', wing:'#f2ead6', beakU:0xffa95c, beakL:0xf5973f, foot:0xffc077 },
+  toast:  { body:'#e3a95c', wing:'#d19247', beakU:0xe9873a, beakL:0xcf6f1c, foot:0xdd8f33 },
+  mint:   { body:'#b9eccd', wing:'#93d9b4', beakU:0xff9d6b, beakL:0xf08a52, foot:0xffab7a },
+  sky:    { body:'#b5e0f7', wing:'#8fc7ea', beakU:0xffb74d, beakL:0xf29e33, foot:0xffb74d },
+  sakura: { body:'#ffd3e0', wing:'#f3bfd2', beakU:0xff8fb0, beakL:0xf0729d, foot:0xff9db8 },
+  ink:    { body:'#454852', wing:'#33363e', beakU:0xffb300, beakL:0xefa100, foot:0xffb300 },
+};
+const SKIN_UI = [
+  { id:'yellow', label:'经典黄鸭', swatch:'#ffd34e' },
+  { id:'cream',  label:'奶白鸭',   swatch:'#fff6e0' },
+  { id:'toast',  label:'烤面包色', swatch:'#e3a95c' },
+  { id:'mint',   label:'薄荷鸭',   swatch:'#b9eccd' },
+  { id:'sky',    label:'晴空鸭',   swatch:'#b5e0f7' },
+  { id:'sakura', label:'樱花鸭',   swatch:'#ffd3e0' },
+  { id:'ink',    label:'墨玉鸭',   swatch:'#454852' },
+];
+const SKIN_STORAGE_KEY = 'yaliya-skin';
+let skinId = null;
+function applySkin(id, { persist = true } = {}){
+  const s = SKINS[id];
+  if(!s) return;
+  skinId = id;
+  for(const rec of skinMats.body){
+    if(rec.base) rec.m.color.copy(new THREE.Color(s.body).multiplyScalar(0.78));
+    else rec.m.uniforms.uColor.value.set(s.body);
+  }
+  for(const rec of skinMats.wing){
+    if(rec.base) rec.m.color.copy(new THREE.Color(s.wing).multiplyScalar(0.78));
+    else rec.m.uniforms.uColor.value.set(s.wing);
+  }
+  beakUpperMat.color.set(s.beakU);
+  beakLowerMat.color.set(s.beakL);
+  footMat.color.set(s.foot);
+  if(persist){
+    try{ localStorage.setItem(SKIN_STORAGE_KEY, id); } catch(_e){}
+  }
+  document.querySelectorAll('.skinpanel button[data-skin]').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.skin === id);
+    btn.setAttribute('aria-selected', btn.dataset.skin === id ? 'true' : 'false');
+  });
+}
+
+/* ===== 道具 ===== */
+/* 浴缸 */
+const propTub = new THREE.Group();
+const tubMat = new THREE.MeshStandardMaterial({ color:0xf6f3ea, roughness:0.35 });
+const tubBody = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.5, 0.95, 36), tubMat);
+tubBody.position.y = 0.45;
+const tubRim = new THREE.Mesh(new THREE.TorusGeometry(1.80, 0.10, 14, 40), tubMat.clone());
+tubRim.rotation.x = Math.PI/2; tubRim.position.y = 0.92;
+const tubWater = new THREE.Mesh(new THREE.CircleGeometry(1.62, 36),
+  new THREE.MeshStandardMaterial({ color:0x8fd0ef, transparent:true, opacity:0.9, roughness:0.15 }));
+tubWater.rotation.x = -Math.PI/2; tubWater.position.y = 0.66;
+propTub.add(tubBody, tubRim, tubWater);
+propTub.visible = false;
+scene.add(propTub);
+
+/* 火箭喷焰（冲刺） */
+const propFlame = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.62, 14),
+  new THREE.MeshStandardMaterial({ color:0xffa726, emissive:0xff6d00, emissiveIntensity:1.6, transparent:true, opacity:0.92 }));
+propFlame.rotation.x = Math.PI;      // 尖朝下
+propFlame.position.set(0, 0.33, -0.05);   // 悬空时正好衔接肚底与地面
+propFlame.visible = false;
+duck.add(propFlame);
+
+/* 眼镜（专注 / 装正经） */
+const propGlasses = new THREE.Group();
+const rimMat = new THREE.MeshStandardMaterial({ color:0x2b1f00, roughness:0.25, metalness:0.3 });
+for(const s of [-1, 1]){
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 10, 28), rimMat);
+  rim.position.set(0.28 * s, 0.13, 0.70);
+  propGlasses.add(rim);
+}
+const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 8), rimMat);
+bridge.rotation.z = Math.PI/2; bridge.position.set(0, 0.14, 0.70);
+propGlasses.add(bridge);
+headGroup.add(propGlasses);
+propGlasses.visible = false;
+
+/* 书（装正经） */
+const propBook = new THREE.Group();
+const bookCover = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.6, 0.09),
+  new THREE.MeshStandardMaterial({ color:0xb3541e, roughness:0.6 }));
+const bookPages = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.53, 0.10),
+  new THREE.MeshStandardMaterial({ color:0xfff8e8, roughness:0.9 }));
+bookPages.position.z = -0.012;
+propBook.add(bookCover, bookPages);
+propBook.position.set(0, 1.26, 1.25);
+propBook.rotation.x = -0.35;
+bodyPivot.add(propBook);
+propBook.visible = false;
+
+/* ============ 眼泪（InstancedMesh）============ */
+const MAX_TEARS = 56;
+const tearMat = new THREE.MeshStandardMaterial({
+  color:0x6fc4ff, roughness:0.1, metalness:0.15,
+  emissive:0x2a6db3, emissiveIntensity:0.45,
+  transparent:true, opacity:0.95
+});
+const tearGeo = new THREE.SphereGeometry(0.048, 10, 8);
+const tears = new THREE.InstancedMesh(tearGeo, tearMat, MAX_TEARS);
+tears.frustumCulled = false;
+scene.add(tears);
+const tearData = Array.from({length:MAX_TEARS}, () => ({ pos:new THREE.Vector3(0,-99,0), vel:new THREE.Vector3(), life:0 }));
+const dummy = new THREE.Object3D();
+let tearClock = 0, tearIdx = 0;
+
+function spawnTear(){
+  const eye = (tearIdx % 2 === 0) ? eyeL : eyeR;
+  const d = tearData[tearIdx % MAX_TEARS];
+  tearIdx++;
+  const p = new THREE.Vector3();
+  eye.getWorldPosition(p);
+  const side = (eye === eyeL) ? -1 : 1;
+  p.x += side * 0.14; p.z += 0.30; p.y -= 0.05;
+  d.pos.copy(p);
+  d.vel.set(side * 0.10, -0.15, 0.20);
+  d.life = 1.25;
+}
+
+/* ============ 表情/符号粒子 Sprite 池 ============ */
+function glyphTexture(ch, color){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.font = '88px "Apple Color Emoji", "PingFang SC", sans-serif';
+  g.fillStyle = color || '#b06a00';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(120,70,0,.35)'; g.shadowBlur = 6;
+  g.fillText(ch, 64, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+class SpritePool {
+  constructor(glyphs, count, texColor){
+    this.items = [];
+    this.texs = glyphs.map(g => glyphTexture(g, texColor));
+    for(let i = 0; i < count; i++){
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.texs[0], transparent:true, depthWrite:false, opacity:0
+      }));
+      s.visible = false;
+      this.items.push({ s, life:0, max:1, vel:new THREE.Vector3(), base:1, grow:0, sway:0, swayP:Math.random()*6.28 });
+      scene.add(this.items[i].s);
+    }
+    this.cursor = 0;
+  }
+  spawn(pos, vel, life, size, grow = 0, sway = 0){
+    const it = this.items[this.cursor % this.items.length];
+    this.cursor++;
+    it.life = it.max = life;
+    it.vel.copy(vel);
+    it.base = size; it.grow = grow; it.sway = sway;
+    it.s.material.map = it.s.material.map || this.texs[0];
+    it.s.material.map = this.texs[Math.floor(Math.random() * this.texs.length)];
+    it.s.material.opacity = 1;
+    it.s.position.copy(pos);
+    it.s.visible = true;
+  }
+  update(dt, t, active){
+    for(const it of this.items){
+      if(it.life > 0){
+        it.life -= dt;
+        const r = Math.max(0, it.life / it.max);
+        it.vel.y += (this.g || 0) * dt;
+        it.s.position.addScaledVector(it.vel, dt);
+        if(it.sway) it.s.position.x += Math.sin(t * 3 + it.swayP) * it.sway * dt;
+        const sc = it.base * (1 + it.grow * (1 - r));
+        it.s.scale.setScalar(Math.max(0.001, sc * Math.min(1, r * 4)));
+        it.s.material.opacity = Math.min(1, r * 2.5);
+      } else if(it.s.visible){
+        it.s.visible = false;
+      }
+    }
+  }
+}
+const poolZzz      = new SpritePool(['Z', 'z'], 8);
+const poolSteam    = new SpritePool(['💨', '💨'], 10);
+const poolAngry    = new SpritePool(['💢'], 6);
+const poolConfetti = new SpritePool(['✨', '🎊', '🌟', '💛', '💥'], 26);
+const poolBubbles  = new SpritePool(['🫧', '🫧', '⚪'], 12);
+const poolSweat    = new SpritePool(['💦'], 6);
+const POOLS = [poolZzz, poolSteam, poolAngry, poolConfetti, poolBubbles, poolSweat];
+function clearFx(){
+  for(const pool of POOLS) for(const it of pool.items){ it.life = 0; it.s.visible = false; }
+  for(const d of tearData){ d.life = 0; d.pos.set(0, -99, 0); }
+}
+
+/* ============ 状态机 ============ */
+const STATUS = {
+  idle:{ t:'正在发呆摸鱼，嘎～', say:['嘎？','嘎嘎～','摸鱼真舒服','今天也想早点下班'] },
+  run :{ t:'冲鸭！！今天也要努力鸭！', say:['冲鸭！！','嘎嘎嘎！','跑起来了！','deadline 不怕！'] },
+  cry :{ t:'鸭力山大…呜呜呜…', say:['呜呜呜…','嘎…（哽咽）','鸭力山大…','抱抱我…'] },
+  sleep:{ t:'呼噜呼噜…Zzz…', say:['Zzz…','zzz…'] },
+  celebrate:{ t:'完成啦！！撒花！', say:['耶！完成鸭！','撒花！','嘎嘎嘎！（得意）','我是最棒鸭！'] },
+  angry:{ t:'哼！不理你了！', say:['哼！','气鼓鼓！','戳我干嘛！','不理你了！'] },
+
+  sprint:{ t:'来不及啦啊啊啊！！', say:['来不及了！！','啊啊啊！','还有 5 分钟！','别拦我！'] },
+  overload:{ t:'干不动了…让我躺一会儿…', say:['让我躺一会儿…','电量耗尽…','……','嘎。（有气无力）'] },
+  bath:{ t:'神仙日子～泡泡浴～', say:['神仙日子～','泡澡泡到天荒地老','咕嘟咕嘟～','已回归鸭生本源'] },
+
+  playdead:{ t:'（装死中…完全不动）', say:['（一动不动）','……（装死）'] },
+  boss:{ t:'咳咳，正在认真工作。', say:['咳咳，在忙。','（正经脸）','报告老板，我在干活。','（偷偷小声）嘎…'] },
+};
+const LINES = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.say]));
+
+let state = 'idle';
+let stateStart = 0;
+let lastInput = 0;
+const w = Object.fromEntries(Object.keys(STATUS).map(k => [k, k === 'idle' ? 1 : 0]));
+
+let blinkT = 2.2, blinkPhase = 1, petFlash = 0;
+let petClicks = [];      // 连续点击 → 生气
+let discussT = 0;        // 自动说话计时
+let confettiCD = 0;
+let lowBattery = false;
+
+const clock = new THREE.Clock();
+let simT = 0;
+
+/* 状态动画参数表 */
+const P = () => ({
+  bounce:0, sink:0, lie:0, lieAng:0, hov:0, syB:0, sy:1,
+  pitch:0, yaw:0, sway:0, spin:0,
+  headPitch:0, headYaw:0, headY:0, headZ:0,
+  wing:0.30, wingF:0, wag:0, foot:0, footSpeed:8.5,
+  eyeOpen:1, beakOpen:0,
+  tears:false, zzz:false, steam:false, confetti:false,
+  bubbles:false, sweat:false,
+  tub:false, flame:false, glasses:false, book:false,
+});
+
+const TAU = Math.PI * 2;
+function blankPose(){
+  const q = P();
+  for(const k in q){ if(typeof q[k] === 'number') q[k] = 0; }
+  return q;
+}
+/* 注意：各状态函数基于 P() 的默认值返回"绝对值"，累加时必须从全零开始 */
+const STATE_POSE = {
+  idle(t){
+    const p = P();
+    p.syB = Math.sin(t * 1.7) * 0.02;
+    p.bounce = 0.018 * Math.max(0, Math.sin(t * 0.85));
+    p.pitch = Math.sin(t * 0.6) * 0.02;
+    p.headPitch = Math.cos(t * 0.5) * 0.05;
+    p.headYaw = Math.sin(t * 0.35) * 0.32;
+    p.wag = Math.sin(t * 2.0) * 0.18;
+    p.wing = 0.30 + Math.sin(t * 1.2) * 0.05;
+    return p;
+  },
+  run(t){
+    const p = P();
+    p.bounce = Math.abs(Math.sin(t * 8.5)) * 0.16;
+    p.syB = Math.sin(t * 17) * 0.035;
+    p.pitch = 0.14;
+    p.sway = Math.sin(t * 2.0) * 0.45;
+    p.yaw = Math.sin(t * 2.0) * 0.10;
+    p.headPitch = -0.08 + Math.sin(t * 17) * 0.03;
+    p.wing = 0.30 + Math.sin(t * 8.5) * 0.55;
+    p.wag = Math.sin(t * 17) * 0.35;
+    p.foot = 1; p.footSpeed = 8.5;
+    return p;
+  },
+  cry(t){
+    const p = P();
+    const sob = Math.pow(Math.sin(t * 3.7) * 0.5 + 0.5, 8) * 0.5;
+    p.sy = 0.93 + Math.sin(t * 7) * 0.01 - sob * 0.06;
+    p.pitch = 0.02 + Math.sin(t * 7) * 0.008;
+    p.headPitch = 0.25;
+    p.headYaw = Math.sin(t * 0.7) * 0.06;
+    p.headY = -0.10;
+    p.headZ = 0.26;
+    p.wing = 0.30 + 0.28;
+    p.wag = 0.04;
+    p.eyeOpen = 1;
+    p.tears = true;
+    return p;
+  },
+  sleep(t){
+    const p = P();
+    p.sy = 0.93 + Math.sin(t * 0.7) * 0.012;
+    p.pitch = 0.06 + Math.sin(t * 0.4) * 0.02;
+    p.headPitch = -0.10 + Math.sin(t * 0.3) * 0.03;
+    p.headYaw = Math.sin(t * 0.2) * 0.12;
+    p.wing = 0.14;
+    p.wag = Math.sin(t * 0.6) * 0.03;
+    p.eyeOpen = 0.07;
+    p.zzz = true;
+    return p;
+  },
+  celebrate(t){
+    const p = P();
+    p.bounce = Math.abs(Math.sin(t * 4.2)) * 0.30;
+    p.syB = Math.sin(t * 8.4) * 0.04;
+    p.spin = 2.6;
+    p.headPitch = -0.14;
+    p.headYaw = Math.sin(t * 4.2) * 0.1;
+    p.wing = 0.85 + Math.sin(t * 9) * 0.45;
+    p.wag = Math.sin(t * 9) * 0.4;
+    p.confetti = true;
+    return p;
+  },
+  angry(t){
+    const p = P();
+    p.sy = 1 + Math.sin(t * 11) * 0.03;
+    p.pitch = Math.sin(t * 22) * 0.012;
+    p.yaw = Math.sin(t * 26) * 0.02;
+    p.headYaw = Math.sin(t * 17) * 0.10;
+    p.wing = 1.9 + Math.sin(t * 20) * 0.06;    // 翅膀叉腰（竖起）
+    p.foot = 1; p.footSpeed = 10;              // 跺脚
+    p.eyeOpen = 0.55;
+    p.steam = true;
+    return p;
+  },
+  sprint(t){
+    const p = P();
+    p.bounce = Math.abs(Math.sin(t * 10)) * 0.10;
+    p.hov = 0.55;                                       // 火箭原地起飞，悬空
+    p.syB = Math.sin(t * 20) * 0.02;
+    p.pitch = 0.25 + Math.sin(t * 40) * 0.01;
+    p.headPitch = -0.06 + Math.sin(t * 30) * 0.02;
+    p.headY = Math.sin(t * 30) * 0.02;
+    p.wing = -0.15;                                    // 翅膀后掠
+    p.foot = 1; p.footSpeed = 16;
+    p.eyeOpen = 1.25;                                  // 瞪大眼
+    p.sweat = true;
+    p.flame = true;
+    return p;
+  },
+  overload(t){
+    const p = P();
+    p.lie = 1;
+    p.lieAng = -0.5;                                   // 后仰 30°，闭眼线可见
+    p.sy = 0.99 + Math.sin(t * 0.8) * 0.02;
+    p.eyeOpen = 0.10;
+    p.wing = 0.08;
+    p.steam = true;                                    // 晕圈的汽
+    return p;
+  },
+  bath(t){
+    const p = P();
+    p.sink = -0.30;
+    p.sy = 0.97 + Math.sin(t * 0.9) * 0.02;
+    p.pitch = 0.03 + Math.sin(t * 0.5) * 0.03;
+    p.headYaw = Math.sin(t * 0.3) * 0.12;
+    p.headPitch = -0.06;
+    p.wing = 0.16;
+    p.eyeOpen = 0.12;
+    p.bubbles = true;
+    p.tub = true;
+    return p;
+  },
+  playdead(t){
+    const p = P();
+    p.lie = 1;
+    p.lieAng = -1.18;                                  // 彻底四脚朝天
+    p.eyeOpen = 0.04;
+    p.wing = 0.02;
+    return p;
+  },
+  boss(t){
+    const p = P();
+    p.sy = 1.02;
+    p.pitch = -0.05;
+    p.headPitch = -0.02 + Math.sin(t * 1.1) * 0.02;
+    p.headYaw = Math.sin(t * 0.7) * 0.25;
+    p.wing = 0.75 + Math.sin(t * 1.4) * 0.04;          // 双翅拢起
+    p.wingF = 0.7;                                     // 翅尖朝前抱书
+    p.eyeOpen = 1;
+    p.glasses = true;
+    p.book = true;
+    p.sweat = Math.sin(t * 1.3) > 0.4;                 // 偶尔冒汗
+    return p;
+  },
+};
+
+/* ============ UI ============ */
+const STATUS_EL = document.getElementById('status');
+const statebar = document.getElementById('statebar');
+const morepanel = document.getElementById('morepanel');
+const skinpanel = document.getElementById('skinpanel');
+
+const skinTitle = document.createElement('div');
+skinTitle.className = 'title';
+skinTitle.textContent = '换皮肤 · 完整体验版全部解锁';
+skinpanel.appendChild(skinTitle);
+for(const sk of SKIN_UI){
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.dataset.skin = sk.id;
+  btn.style.background = `radial-gradient(circle at 35% 30%, #fff8, ${sk.swatch})`;
+  btn.title = sk.label;
+  btn.setAttribute('role', 'option');
+  btn.innerHTML = `<span class="tip">${sk.label}</span>`;
+  btn.addEventListener('click', () => {
+    applySkin(sk.id);
+    spawnBubble('换好啦：' + sk.label + ' · 嘎～', innerWidth * 0.5, innerHeight * 0.42);
+  });
+  skinpanel.appendChild(btn);
+}
+let savedSkin = 'yellow';
+try{
+  const stored = localStorage.getItem(SKIN_STORAGE_KEY);
+  if(stored && SKINS[stored]) savedSkin = stored;
+} catch(_e){}
+applySkin(savedSkin, { persist: false });
+
+function setState(next){
+  if(!STATE_POSE[next]) return;
+  state = next;
+  stateStart = simT;
+  petClicks.length = 0;
+  document.querySelectorAll('.statebar button[data-state], .morepanel button[data-state]')
+    .forEach(b => b.classList.toggle('active', b.dataset.state === next));
+  STATUS_EL.textContent = STATUS[next].t;
+  STATUS_EL.style.opacity = 0;
+  requestAnimationFrame(() => STATUS_EL.style.opacity = 0.85);
+}
+statebar.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  if(b.id === 'skinBtn'){
+    skinpanel.classList.toggle('open');
+    if(skinpanel.classList.contains('open')) morepanel.classList.remove('open');
+    return;
+  }
+  if(b.id === 'moreBtn'){
+    morepanel.classList.toggle('open');
+    if(morepanel.classList.contains('open')) skinpanel.classList.remove('open');
+    return;
+  }
+  if(b.dataset.state) setState(b.dataset.state);
+});
+morepanel.addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(!b) return;
+  if(b.dataset.state){ setState(b.dataset.state); morepanel.classList.remove('open'); }
+});
+addEventListener('pointerdown', e => {
+  if(e.target.closest('#statebar') || e.target.closest('#skinpanel') || e.target.closest('#morepanel')) return;
+  skinpanel.classList.remove('open');
+  morepanel.classList.remove('open');
+}, true);
+
+/* ============ 主循环 ============ */
+function tick(dt){
+  const t = (simT += dt);
+
+  /* ---- 状态权重 ---- */
+  for(const k in w){
+    const target = (k === state) ? 1 : 0;
+    w[k] += (target - w[k]) * (1 - Math.exp(-6 * dt));
+    if(w[k] < 0.001) w[k] = 0;
+  }
+
+  /* ---- 合成姿态（全零累加）---- */
+  const acc = blankPose();
+  for(const k in w){
+    const z = w[k];
+    if(z === 0) continue;
+    const s = STATE_POSE[k](t);
+    acc.bounce += s.bounce * z; acc.sink += s.sink * z; acc.lie += s.lie * z; acc.hov += s.hov * z;
+    acc.lieAng += s.lieAng * z;
+    acc.syB += s.syB * z; acc.sy += s.sy * z;
+    acc.pitch += s.pitch * z; acc.yaw += s.yaw * z; acc.sway += s.sway * z; acc.spin += s.spin * z;
+    acc.headPitch += s.headPitch * z; acc.headYaw += s.headYaw * z;
+    acc.headY += s.headY * z; acc.headZ += s.headZ * z;
+    acc.wing += s.wing * z; acc.wingF += s.wingF * z; acc.wag += s.wag * z;
+    acc.foot += s.foot * z; acc.footSpeed += s.footSpeed * z;
+    acc.eyeOpen += s.eyeOpen * z; acc.beakOpen += s.beakOpen * z;
+    if(s.tears && z > 0.4) acc.tears = true;
+    if(s.zzz && z > 0.4) acc.zzz = true;
+    if(s.steam && z > 0.4) acc.steam = true;
+    if(s.confetti && z > 0.4) acc.confetti = true;
+    if(s.bubbles && z > 0.4) acc.bubbles = true;
+    if(s.sweat && z > 0.4) acc.sweat = true;
+    if(s.tub && z > 0.4) acc.tub = true;
+    if(s.flame && z > 0.4) acc.flame = true;
+    if(s.glasses && z > 0.4) acc.glasses = true;
+    if(s.book && z > 0.4) acc.book = true;
+  }
+
+  const sy = acc.sy + acc.syB;
+  const sxz = 1 + (1 - sy) * 0.55;
+
+  /* 低电量：小鸭没精打采（仅空闲/打盹时体现） */
+  if(lowBattery && (state === 'idle' || state === 'sleep')){
+    acc.sy -= 0.05;
+    acc.headPitch += 0.12;
+  }
+
+  /* ---- 应用 ---- */
+  bodyPivot.position.y = acc.bounce + acc.sink + acc.hov
+    + acc.lie * (0.16 + Math.abs(Math.sin(acc.lieAng)) * 0.98);
+  bodyPivot.rotation.x = acc.pitch * (1 - acc.lie) + acc.lie * acc.lieAng;
+  bodyPivot.scale.set(sxz, sy, sxz);
+  duck.position.x = acc.sway;
+  duck.rotation.y = acc.yaw + t * acc.spin;
+  headGroup.rotation.set(acc.headPitch, acc.headYaw, 0);
+  headGroup.position.set(0, 1.78 + acc.headY, 0.24 + acc.headZ);
+  wingL.rotation.z = -(acc.wing);
+  wingR.rotation.z = acc.wing;
+  wingL.rotation.y = acc.wingF;
+  wingR.rotation.y = -acc.wingF;
+  tail.rotation.y = acc.wag;
+  beakLower.rotation.x = acc.beakOpen;
+  feet.forEach((f, k) => {
+    const ph = t * acc.footSpeed + k * Math.PI;
+    f.position.y = 0.05 + acc.foot * Math.max(0, Math.sin(ph)) * 0.22;
+    f.position.z = 0.12 + acc.foot * Math.cos(ph) * 0.18;
+  });
+  eyeL.scale.y = eyeR.scale.y = blinkScaleValue * acc.eyeOpen;
+  eyeL.scale.z = eyeR.scale.z = Math.max(0.5, acc.eyeOpen);
+  /* 闭眼线只由状态眼开度决定，不随眨眼脉冲（否则睡着时眼皮会「闪一下睁开」）；
+     封顶 0.85，深睡时弧线柔和一点不抢戏 */
+  const closeness = Math.max(0, Math.min(0.85, (0.35 - acc.eyeOpen) / 0.28));
+  lids.visible = closeness > 0.02;
+  lids.scale.setScalar(closeness);
+  /* 闭眼扁片会从瞳孔前面漏出高光小白点——眼闭合时直接藏掉高光 */
+  const shineOn = (blinkScaleValue * acc.eyeOpen) > 0.35;
+  eyeL.userData.shine.visible = eyeR.userData.shine.visible = shineOn;
+
+  /* ---- 道具显隐 ---- */
+  propTub.visible = w.bath > 0.02;
+  if(propTub.visible){
+    propTub.scale.setScalar(Math.min(1, w.bath * 1.15));
+    propTub.rotation.y = 0;
+  }
+  propFlame.visible = w.sprint > 0.05;
+  if(propFlame.visible){
+    propFlame.scale.set(1, 0.8 + Math.abs(Math.sin(t * 37)) * 0.5, 1);
+  }
+  propGlasses.visible = w.boss > 0.02;
+  if(propGlasses.visible){
+    const sc = Math.min(1, w.boss * 1.2);
+    propGlasses.scale.setScalar(sc);
+  }
+  propBook.visible = w.boss > 0.02;
+  if(propBook.visible) propBook.scale.setScalar(Math.min(1, w.boss * 1.2) * 0.95);
+
+  /* ---- 影子 ---- */
+  shadow.position.x = duck.position.x;
+  shadow.scale.setScalar(Math.max(0.55, 1 - acc.bounce * 1.6 - acc.hov * 0.45));
+  shadow.material.opacity = Math.max(0.15, 1 - (acc.bounce * 4.5 + acc.hov * 1.2));
+
+  /* ---- 眨眼（闭眼状态下不触发，避免眼皮脉冲闪动）---- */
+  blinkT -= dt;
+  if(blinkT <= 0){
+    if(acc.eyeOpen > 0.35){ blinkPhase = 0; blinkT = 2.2 + Math.random() * 3.2; }
+    else blinkT = 0.5;                     // 眼闭着，稍后再试
+  }
+  if(blinkPhase < 1){
+    if(acc.eyeOpen <= 0.35) blinkPhase = 1;             // 入睡瞬间收势，眨眼作废
+    else blinkPhase = Math.min(1, blinkPhase + dt / 0.2);
+  }
+  blinkScaleValue = blinkPhase < 1
+    ? ((blinkPhase < 0.5 ? 1 - blinkPhase * 1.8 : (blinkPhase - 0.5) * 1.8) * 0.85 + 0.15)
+    : 1;
+  eyeL.scale.y = eyeR.scale.y = blinkScaleValue * acc.eyeOpen;
+
+  /* ---- 眼泪 ---- */
+  const tearRate = acc.tears ? 10 : 0;
+  tearClock += dt * tearRate;
+  while(tearClock > 1){ tearClock -= 1; spawnTear(); }
+  for(let k = 0; k < MAX_TEARS; k++){
+    const d = tearData[k];
+    if(d.life > 0){
+      d.life -= dt;
+      d.vel.y -= 1.8 * dt;
+      d.pos.addScaledVector(d.vel, dt);
+      const s = Math.min(1, d.life / 0.75);
+      dummy.position.copy(d.pos);
+      dummy.scale.setScalar(Math.max(0.001, s));
+    } else {
+      dummy.position.set(0, -99, 0);
+      dummy.scale.setScalar(0.001);
+    }
+    dummy.updateMatrix();
+    tears.setMatrixAt(k, dummy.matrix);
+  }
+  tears.instanceMatrix.needsUpdate = true;
+
+  /* ---- 粒子 ---- */
+  if(acc.zzz && Math.floor(t / 0.9) !== Math.floor((t - dt) / 0.9))
+    poolZzz.spawn(new THREE.Vector3(0.5, 2.25, 0.15), new THREE.Vector3(0.12, 0.45, 0), 2.2, 0.5, 0.5, 0.2);
+  const breathCadence = Math.floor(t / 0.5) !== Math.floor((t - dt) / 0.5);
+  if(acc.steam && breathCadence){
+    const sv = new THREE.Vector3((Math.random() - 0.5) * 0.7, 2.2 + Math.random() * 0.15, 0.15),
+          su = new THREE.Vector3(0, 0.7, 0);
+    if(w.angry > 0.5) poolAngry.spawn(sv, su, 1.3, 0.5, 1.6);
+    else poolSteam.spawn(sv, su, 1.3, 0.5, 1.6);
+  }
+  if(acc.sweat && Math.floor(t / 0.7) !== Math.floor((t - dt) / 0.7)){
+    const side = Math.random() < 0.5 ? -1 : 1;
+    poolSweat.spawn(new THREE.Vector3(side * 0.55, 1.9, 0.3),
+      new THREE.Vector3(side * 0.9, 0.6, 0), 0.9, 0.45, 0);
+  }
+  if(acc.confetti && Math.floor(t / 0.8) !== Math.floor((t - dt) / 0.8)){
+    for(let i = 0; i < 5; i++)
+      poolConfetti.spawn(new THREE.Vector3((Math.random() - 0.5) * 1.6, 2.6, 0.3),
+        new THREE.Vector3((Math.random() - 0.5) * 1.6, Math.random() * 0.6 - 0.4, (Math.random() - 0.5) * 0.6),
+        2.0, 0.42, 0);
+  }
+  if(acc.bubbles && Math.floor(t / 0.3) !== Math.floor((t - dt) / 0.3)){
+    /* 朝镜头前方偏置发射，一升就冒出浴缸边缘 */
+    const a = (Math.random() * 1.6 - 0.8) * (Math.random() < 0.5 ? 1 : -1);
+    const r = 0.7 + Math.random() * 0.8;
+    poolBubbles.spawn(new THREE.Vector3(Math.cos(a) * r, 0.78, Math.sin(a) * r * 0.75),
+      new THREE.Vector3(0, 0.85, 0.06), 1.6, 0.5, 0.9);
+  }
+  poolZzz.update(dt, t); poolSteam.update(dt, t); poolAngry.update(dt, t);
+  poolConfetti.update(dt, t); poolBubbles.update(dt, t); poolSweat.update(dt, t);
+
+  petFlash = Math.max(0, petFlash - dt * 1.2);
+  if(petFlash > 0){
+    wingL.rotation.z -= petFlash * Math.abs(Math.sin(t * 26)) * 0.5;
+    wingR.rotation.z += petFlash * Math.abs(Math.sin(t * 26)) * 0.5;
+  }
+  for(const m of furMats) m.uniforms.uTime.value = t;
+
+  /* ---- 自动说话 ---- */
+  discussT += dt;
+  if(discussT > 4.5 && Math.abs(acc.eyeOpen) > 0.3){
+    discussT = 0;
+    const v = new THREE.Vector3(0, 2.5, 0).project(camera);
+    const lines = LINES[state];
+    if(lines && v.z < 1){
+      const x = (v.x * 0.5 + 0.5) * innerWidth;
+      const y = (-v.y * 0.5 + 0.5) * innerHeight;
+      spawnBubble(lines[Math.floor(Math.random() * lines.length)], x, y);
+    }
+  }
+
+  /* ---- 自动状态流转 ---- */
+  const inState = simT - stateStart;
+  if(state === 'run' && inState > 45) setState('overload');
+  if(state === 'sprint' && inState > 20) setState('overload');
+  if(state === 'celebrate' && inState > 9) setState('idle');
+  if(state === 'angry' && inState > 6.5) setState('idle');
+  if(state === 'boss' && inState > 30) setState('idle');
+  if(state === 'idle' && (simT - lastInput) > 180) setState('sleep');
+  if(state === 'sleep' && (simT - lastInput) > 900) setState('playdead');
+
+  /* ---- 相机 ---- */
+  camera.position.x = THREE.MathUtils.lerp(camera.position.x, mouseX * 0.55, 1 - Math.exp(-3 * dt));
+  camera.position.y = THREE.MathUtils.lerp(camera.position.y, 2.0 + mouseY * 0.35, 1 - Math.exp(-3 * dt));
+  camera.lookAt(0, 1.05, 0);
+
+  renderer.render(scene, camera);
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  tick(Math.min(clock.getDelta(), 0.05));
+}
+
+/* ============ 气泡话 ============ */
+function spawnBubble(text, x, y){
+  const el = document.createElement('div');
+  el.className = 'quack';
+  el.textContent = text;
+  el.style.left = x + 'px';
+  el.style.top = (y - 20) + 'px';
+  document.body.appendChild(el);
+  setTimeout(() => el.remove(), 1350);
+}
+
+/* ============ 交互 ============ */
+let mouseX = 0, mouseY = 0;
+addEventListener('pointermove', e => {
+  mouseX = (e.clientX / innerWidth  - 0.5) * 2;
+  mouseY = (e.clientY / innerHeight - 0.5) * 2;
+});
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+addEventListener('pointerdown', e => {
+  lastInput = simT;
+  if(e.target !== renderer.domElement) return;
+  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+  if(raycaster.intersectObject(duck, true).length){
+    /* 连点 4 次会生气 */
+    petClicks.push(simT);
+    petClicks = petClicks.filter(x => simT - x < 3.5);
+    petFlash = 1;
+    if(petClicks.length >= 4 && state !== 'angry' && state !== 'playdead'){
+      petClicks.length = 0;
+      setState('angry');
+      spawnBubble('哼！戳戳戳就知道戳！', e.clientX, e.clientY - 20);
+      return;
+    }
+    if(state === 'playdead' || state === 'sleep'){
+      setState('idle');
+      spawnBubble('嘎？！', e.clientX, e.clientY - 20);
+      return;
+    }
+    if(state === 'overload'){
+      setState('idle');
+      spawnBubble('复活了！嘎！', e.clientX, e.clientY - 20);
+      return;
+    }
+    const list = LINES[state];
+    spawnBubble(list[Math.floor(Math.random() * list.length)], e.clientX, e.clientY - 20);
+  }
+});
+
+addEventListener('keydown', e => {
+  lastInput = simT;
+  const map = { '1':'idle', '2':'run', '3':'cry', '4':'sleep', '5':'celebrate', '6':'angry',
+                'd':'sprint', 'p':'bath', 'k':'playdead',
+                'o':'overload', 'b':'boss', 'Escape':'idle' };
+  if(e.key === 'b' && state === 'boss'){ setState('idle'); return; }
+  if(map[e.key]) setState(map[e.key]);
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ============ 低电量联动 ============ */
+let blinkScaleValue = 1;
+if(navigator.getBattery){
+  navigator.getBattery().then(bat => {
+    const check = () => { lowBattery = bat.level < 0.2 && !bat.charging; };
+    check();
+    bat.addEventListener('levelchange', check);
+    bat.addEventListener('chargingchange', check);
+  });
+}
+
+window.__duck = { renderer, scene, camera, duck, bodyPivot, floor, shadow, tears, setState, applySkin, SKINS };
+window.__duck.setState = setState;
+window.__duck.tick = tick;
+/* 调试助手：手动推演动画后离屏渲染并触发下载 */
+window.__capture = (stateName, name) => {
+  if(stateName) setState(stateName);
+  clearFx();                         // 只清上个状态的残留
+  for(let k = 0; k < 150; k++) tick(1/60);
+  /* 复用同一个离屏渲染器：反复 new 会耗尽浏览器的 WebGL 上下文配额 */
+  if(!window.__capRenderer){
+    window.__capRenderer = new renderer.constructor({ antialias:true, alpha:true, preserveDrawingBuffer:true });
+    window.__capRenderer.setSize(720, 600); window.__capRenderer.setPixelRatio(1);
+    window.__capRenderer.setClearColor(0x000000, 0);
+    window.__capCamera = new camera.constructor(34, 720/600, 0.1, 100);
+    window.__capCamera.position.set(0, 1.7, 6.4); window.__capCamera.lookAt(0, 1.15, 0);
+  }
+  const r2 = window.__capRenderer, c2 = window.__capCamera;
+  r2.render(scene, c2);
+  return new Promise(resolve => {
+    r2.domElement.toBlob(b => {
+      const u = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = u; a.download = name + '.png';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(u), 4000);
+      resolve('captured ' + name);
+    });
+  });
+};
+
+animate();
+</script>
+</body>
+</html>

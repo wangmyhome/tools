@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>鸭力鸭 YaliYa · Logo 设计</title>
+<style>
+  :root{
+    --sky:#5ea2fe; --fur:#ffcc43; --beak:#ff9d00; --blush:#ff9d9d;
+    --ink:#3a2b18; --cream:#fff6e0;
+  }
+  *{ box-sizing:border-box; }
+  body{
+    margin:0; padding:56px 40px 80px;
+    background:radial-gradient(120% 90% at 50% 0%, #eaf4ff 0%, #cfe6ff 45%, #a9d0ff 100%);
+    color:var(--ink);
+    font-family: ui-rounded, "PingFang SC", "Hiragino Sans GB", -apple-system, "Segoe UI", sans-serif;
+  }
+  header{ text-align:center; margin-bottom:48px; }
+  header h1{ font-size:34px; font-weight:900; margin:0 0 8px; letter-spacing:2px; }
+  header p{ margin:0; opacity:.7; font-size:15px; }
+
+  section{ margin:0 auto 64px; max-width:1080px; }
+  section > h2{
+    font-size:15px; font-weight:800; letter-spacing:3px;
+    opacity:.55; margin:0 0 20px; border-left:4px solid var(--sky); padding-left:10px;
+  }
+  .row{ display:flex; flex-wrap:wrap; gap:28px; justify-content:center; align-items:flex-start; }
+  .card{
+    background:#fff; border-radius:24px; padding:28px;
+    box-shadow:0 14px 36px rgba(60,110,190,.15);
+    display:flex; flex-direction:column; align-items:center; gap:14px;
+  }
+  .card .cap{ font-size:13px; opacity:.7; font-weight:700; text-align:center; }
+  .card.dark{ background:var(--ink); }
+  .card.dark .cap{ color:var(--cream); opacity:.8; }
+
+  /* 主图标 */
+  .appicon{ width:260px; height:260px; border-radius:58px; box-shadow:0 10px 30px rgba(90,150,240,.4); }
+
+  /* lockup */
+  .lockup{ text-align:center; }
+  .lockup .cn{ font-size:56px; font-weight:900; letter-spacing:8px; color:var(--ink); line-height:1.1; }
+  .lockup .en{ font-size:16px; font-weight:800; letter-spacing:10px; color:var(--beak); margin-top:6px; }
+  .lockup .tag{ font-size:14px; opacity:.65; margin-top:10px; }
+
+  /* 圆形徽章 */
+  .round{ border-radius:50%; object-fit:cover; box-shadow:0 10px 30px rgba(90,150,240,.3); }
+
+  /* 色板 */
+  .swatches{ display:flex; gap:14px; flex-wrap:wrap; justify-content:center; }
+  .sw{ width:118px; }
+  .sw .chip{ height:76px; border-radius:16px; box-shadow:inset 0 0 0 1px rgba(0,0,0,.06); }
+  .sw .nm{ font-size:12px; font-weight:800; margin-top:8px; }
+  .sw .hex{ font-size:11px; opacity:.6; }
+
+  .btn{
+    appearance:none; border:1px solid rgba(60,110,190,.3); background:rgba(255,255,255,.9);
+    color:var(--ink); font-family:inherit; font-size:13px; font-weight:800;
+    padding:8px 16px; border-radius:999px; cursor:pointer; text-decoration:none;
+  }
+  .btn:hover{ background:#fff; transform:translateY(-1px); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>鸭力鸭 YALIYA · Logo 设计方案</h1>
+  <p>3D 毛茸茸 × 蓝天圆角方块 · 与桌宠小鸭同一画风</p>
+</header>
+
+<!-- 主图标 -->
+<section>
+  <h2>01 · APP 图标（主视觉）</h2>
+  <div class="row">
+    <div class="card">
+      <img class="appicon" src="logo.png" alt="鸭力鸭 App 图标">
+      <div class="cap">主图标 · App / 桌面 / 头像 · 1024×1024 透明底</div>
+      <a class="btn" href="logo.png" download="yaliya-icon-1024.png">下载 PNG 1024</a>
+    </div>
+  </div>
+</section>
+
+<!-- 组合标志 -->
+<section>
+  <h2>02 · 横版组合（图标 + 字标）</h2>
+  <div class="row">
+    <div class="card lockup">
+      <img class="round" src="logo.png" width="150" height="150" alt="鸭力鸭">
+      <div class="cn">鸭力鸭</div>
+      <div class="en">YALIYA</div>
+    </div>
+    <div class="card lockup">
+      <img class="appicon" src="logo.png" width="120" height="120" style="border-radius:27px" alt="鸭力鸭">
+      <div class="cn" style="font-size:40px">鸭力鸭</div>
+      <div class="tag">YALIYA · 会陪你摸鱼、冲鸭和哭泣的桌面小黄鸭</div>
+    </div>
+  </div>
+</section>
+
+<!-- 圆形徽章 -->
+<section>
+  <h2>03 · 圆形徽章（good for 社群 / 水印 / 贴纸）</h2>
+  <div class="row">
+    <div class="card">
+      <img class="round" src="logo.png" width="190" height="190" alt="圆形徽章">
+      <div class="cap">圆形徽章版</div>
+    </div>
+    <div class="card dark">
+      <img class="round" src="logo.png" width="160" height="160" alt="深色底">
+      <div class="cap">深色底</div>
+    </div>
+    <div class="card">
+      <img class="round" src="logo.png" width="160" height="160" style="border:4px solid var(--fur)" alt="浅色底描边">
+      <div class="cap">浅色底 · 绒毛黄描边</div>
+    </div>
+  </div>
+</section>
+
+<!-- 三状态小表情 -->
+<section>
+  <h2>04 · 三状态表情小图标（延伸系统 / 常驻托盘）</h2>
+  <div class="row">
+    <div class="card">
+      <img class="appicon" src="logo.png" width="150" height="150" style="border-radius:34px" alt="空闲">
+      <div class="cap">空闲 · 摸鱼模式</div>
+      <a class="btn" href="logo.png" download="yaliya-state-idle.png">下载 PNG</a>
+    </div>
+    <div class="card">
+      <img class="appicon" src="state-run.png" width="150" height="150" style="border-radius:34px" alt="奔跑">
+      <div class="cap">奔跑 · 冲鸭模式</div>
+      <a class="btn" href="state-run.png" download="yaliya-state-run.png">下载 PNG</a>
+    </div>
+    <div class="card">
+      <img class="appicon" src="state-cry.png" width="150" height="150" style="border-radius:34px" alt="哭泣">
+      <div class="cap">哭泣 · 负鸭模式</div>
+      <a class="btn" href="state-cry.png" download="yaliya-state-cry.png">下载 PNG</a>
+    </div>
+  </div>
+</section>
+
+<!-- 色板 -->
+<section>
+  <h2>05 · 品牌色板</h2>
+  <div class="swatches">
+    <div class="sw"><div class="chip" style="background:#5ea2fe"></div><div class="nm">天空蓝（图标底）</div><div class="hex">#5EA2FE</div></div>
+    <div class="sw"><div class="chip" style="background:#ffcc43"></div><div class="nm">绒毛黄</div><div class="hex">#FFCC43</div></div>
+    <div class="sw"><div class="chip" style="background:#ff9d00"></div><div class="nm">扁嘴橙</div><div class="hex">#FF9D00</div></div>
+    <div class="sw"><div class="chip" style="background:#ff9d9d"></div><div class="nm">腮红粉</div><div class="hex">#FF9D9D</div></div>
+    <div class="sw"><div class="chip" style="background:#3a2b18"></div><div class="nm">墨瞳棕</div><div class="hex">#3A2B18</div></div>
+    <div class="sw"><div class="chip" style="background:#fff6e0"></div><div class="nm">奶油白</div><div class="hex">#FFF6E0</div></div>
+  </div>
+</section>
+
+</body>
+</html>

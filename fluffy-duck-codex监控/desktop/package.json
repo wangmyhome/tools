@@ -1,0 +1,17 @@
+{
+  "name": "yaliya-pet",
+  "productName": "鸭力鸭",
+  "version": "0.1.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "test": "node codex-monitor.test.js",
+    "probe": "node codex-monitor.js --probe",
+    "watch": "node codex-monitor.js --watch",
+    "sync-dist": "./sync-dist.sh"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0"
+  }
+}

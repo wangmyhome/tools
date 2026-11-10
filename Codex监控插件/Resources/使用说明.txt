@@ -1,0 +1,16 @@
+CodexNotch 安装说明
+
+1. 打开这个 DMG 文件。
+2. 把 CodexNotch 拖到右边的 Applications 文件夹。
+3. 在「应用程序」里双击 CodexNotch 启动。
+
+首次打开如果提示无法验证开发者：
+- 在应用程序文件夹里按住 Control 键点击 CodexNotch。
+- 选择「打开」。
+- 在弹窗里再点「打开」。
+
+说明：
+- CodexNotch 是菜单栏应用，启动后主要状态显示在桌面悬浮胶囊里。
+- 点击菜单栏图标可以隐藏或显示悬浮胶囊。
+- 需要本机已有 ~/.codex 目录，CodexNotch 才能读取 Codex 任务状态。
+- 悬浮胶囊可以直接拖动，位置会自动记住。

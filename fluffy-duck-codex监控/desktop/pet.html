@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>鸭力鸭</title>
+<style>
+  *{ box-sizing:border-box; margin:0; }
+  html,body{ height:100%; overflow:hidden; background:transparent; }
+  body{
+    font-family: ui-rounded, "PingFang SC", "Hiragino Sans GB", -apple-system, sans-serif;
+    user-select:none;
+  }
+  canvas{ position:fixed; inset:0; display:block; }
+</style>
+</head>
+<body>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* 屏幕上直接可见的错误浮层（无控制台也能看到） */
+window.onerror = (m, src, line, col) => {
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:4px;top:4px;z-index:999;background:#fff;color:#c00;'
+    + 'font:11px/1.4 ui-monospace,monospace;max-width:310px;white-space:pre-wrap;'
+    + 'border-radius:8px;padding:5px 8px;box-shadow:0 2px 8px rgba(0,0,0,.3);';
+  d.textContent = 'ERR ' + m + '\n@' + (line || '?') + ':' + (col || '?');
+  document.body.appendChild(d);
+};
+
+/* ============ 渲染基础 ============ */
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.NoToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.setClearColor(0x000000, 0);
+document.body.appendChild(renderer.domElement);
+
+const scene  = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(0, 2.45, 6.0);
+
+const hemi = new THREE.HemisphereLight(0xfff6e0, 0xddaa55, 0.85);
+const key  = new THREE.DirectionalLight(0xffffff, 1.5);  key.position.set(2.2, 4.5, 3.0);
+const fill = new THREE.DirectionalLight(0xffe9c4, 0.5);  fill.position.set(-3.0, 2.0, -2.5);
+scene.add(hemi, key, fill);
+
+/* ============ 脚下光晕与影子 ============ */
+function radialTexture(inner, outer){
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  const grad = g.createRadialGradient(128,128,0, 128,128,128);
+  grad.addColorStop(0, inner); grad.addColorStop(1, outer);
+  g.fillStyle = grad; g.fillRect(0,0,256,256);
+  return new THREE.CanvasTexture(c);
+}
+/* 脚下光晕移除：悬浮窗背景完全透明，只保留极淡的接触影 */
+
+const shadow = new THREE.Mesh(
+  new THREE.CircleGeometry(1.7, 40),
+  new THREE.MeshBasicMaterial({
+    map: radialTexture('rgba(120,70,0,0.4)', 'rgba(120,70,0,0)'),
+    transparent:true, depthWrite:false
+  })
+);
+shadow.rotation.x = -Math.PI/2;
+scene.add(shadow);
+
+/* ============ 毛发 Shader（壳层法）============ */
+const NOISE_GLSL = `
+  float hash13(vec3 p){
+    p = fract(p * 0.3183099 + 0.1);
+    p *= 17.0;
+    return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+  }
+  float noise3(vec3 x){
+    vec3 i = floor(x); vec3 f = fract(x);
+    f = f * f * (3.0 - 2.0 * f);
+    return mix(
+      mix(mix(hash13(i + vec3(0,0,0)), hash13(i + vec3(1,0,0)), f.x),
+          mix(hash13(i + vec3(0,1,0)), hash13(i + vec3(1,1,0)), f.x), f.y),
+      mix(mix(hash13(i + vec3(0,0,1)), hash13(i + vec3(1,0,1)), f.x),
+          mix(hash13(i + vec3(0,1,1)), hash13(i + vec3(1,1,1)), f.x), f.y), f.z);
+  }
+  float fbm(vec3 p){
+    float v = 0.0, a = 0.5;
+    for(int i = 0; i < 3; i++){ v += a * noise3(p); p *= 2.03; a *= 0.5; }
+    return v;
+  }
+`;
+const FUR_VERT = /* glsl */`
+  uniform float uShell;
+  uniform float uFurLength;
+  varying vec3 vWPos;
+  varying vec3 vWNormal;
+  void main(){
+    float s = uShell;
+    vec3 disp = normal * (s * uFurLength) + vec3(0.0, -0.45, 0.0) * s * s * uFurLength;
+    vec4 wp = modelMatrix * vec4(position + disp, 1.0);
+    vWPos    = wp.xyz;
+    vWNormal = normalize(mat3(modelMatrix) * normal);
+    gl_Position = projectionMatrix * viewMatrix * wp;
+  }
+`;
+const FUR_FRAG = /* glsl */`
+  uniform vec3  uColor;
+  uniform float uShell;
+  uniform float uTime;
+  uniform float uNoiseScale;
+  varying vec3 vWPos;
+  varying vec3 vWNormal;
+  ${NOISE_GLSL}
+  void main(){
+    vec3 sp = vWPos * uNoiseScale + vec3(uTime * 0.12, uTime * 0.08, -uTime * 0.1);
+    float n = fbm(sp + uShell * 2.2);
+    n = clamp((n - 0.14) * 1.4, 0.0, 1.0);
+    float density = step(uShell, n * mix(1.3, 0.9, uShell));
+    if(density < 0.5) discard;
+    vec3 N = normalize(vWNormal);
+    vec3 V = normalize(cameraPosition - vWPos);
+    float d1  = clamp(dot(N, normalize(vec3( 0.45, 0.75, 0.6))), 0.0, 1.0);
+    float d2  = clamp(dot(N, normalize(vec3(-0.60, 0.25,-0.55))), 0.0, 1.0);
+    float rim = pow(clamp(1.0 - dot(N, V), 0.0, 1.0), 2.0);
+    vec3 col = mix(uColor * 0.7, uColor * 1.28, uShell);
+    col *= (0.32 + 0.85 * d1 + 0.3 * d2 + 0.3 * rim);
+    col = pow(col, vec3(0.4545));
+    gl_FragColor = vec4(col, 1.0 - uShell * 0.12);
+  }
+`;
+const furMats = [];
+const skinMats = { body: [], wing: [] };   /* 皮肤换色登记：base=毛下打底 / fur=毛壳 shader */
+function furMaterial(colorHex, shell, furLength, noiseScale){
+  const m = new THREE.ShaderMaterial({
+    transparent:true, depthWrite:false, side:THREE.FrontSide,
+    uniforms:{
+      uShell:{ value: shell },
+      uFurLength:{ value: furLength },
+      uNoiseScale:{ value: noiseScale },
+      uColor:{ value: new THREE.Color(colorHex) },
+      uTime:{ value: 0 },
+    },
+    vertexShader: FUR_VERT,
+    fragmentShader: FUR_FRAG,
+  });
+  furMats.push(m);
+  return m;
+}
+function makeFurPart(geometry, { color, furLength, shells, noiseScale }, slot = 'body'){
+  const group = new THREE.Group();
+  const base = new THREE.Mesh(geometry,
+    new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.78), roughness:1.0 }));
+  skinMats[slot].push({ m: base.material, base: true });
+  group.add(base);
+  for(let i = 1; i <= shells; i++){
+    const fm = furMaterial(color, i / shells, furLength, noiseScale);
+    skinMats[slot].push({ m: fm, base: false });
+    const mesh = new THREE.Mesh(geometry, fm);
+    mesh.renderOrder = i;
+    group.add(mesh);
+  }
+  return group;
+}
+function shapedSphere(r, sx, sy, sz, seg = 36){
+  const g = new THREE.SphereGeometry(r, seg, Math.round(seg * 0.72));
+  g.scale(sx, sy, sz);
+  g.computeVertexNormals();
+  return g;
+}
+
+/* ============ 搭建小鸭 ============ */
+const duck = new THREE.Group();
+const bodyPivot = new THREE.Group();
+duck.add(bodyPivot);
+scene.add(duck);
+
+const Y_BODY = '#ffd34e', Y_WING = '#f9c53f';
+
+const body = makeFurPart(shapedSphere(1, 1.18, 0.92, 1.02, 48), {
+  color:Y_BODY, furLength:0.15, shells:22, noiseScale:8.5
+}, 'body');
+body.position.y = 0.98;
+bodyPivot.add(body);
+
+const headGroup = new THREE.Group();
+headGroup.position.set(0, 1.78, 0.24);
+bodyPivot.add(headGroup);
+
+const head = makeFurPart(shapedSphere(0.6, 1.0, 0.97, 0.97, 40), {
+  color:Y_BODY, furLength:0.12, shells:20, noiseScale:9.5
+}, 'body');
+headGroup.add(head);
+
+/* 嘴 */
+const beakUpperMat = new THREE.MeshStandardMaterial({ color:0xff8a00, roughness:0.35 });
+const beakUpper = new THREE.Mesh(shapedSphere(1, 0.5, 0.16, 0.36, 24), beakUpperMat);
+beakUpper.position.set(0, -0.02, 0.60);
+const beakLowerMat = new THREE.MeshStandardMaterial({ color:0xf07800, roughness:0.4 });
+const beakLower = new THREE.Mesh(shapedSphere(1, 0.42, 0.10, 0.30, 20), beakLowerMat);
+beakLower.position.set(0, -0.14, 0.57);
+headGroup.add(beakUpper, beakLower);
+
+/* 眼睛（第一版比例：小黑豆探在嘴上缘） */
+const eyeMat = new THREE.MeshStandardMaterial({ color:0x1c1400, roughness:0.15 });
+const shineMat = new THREE.MeshStandardMaterial({ color:0xffffff, emissive:0xffffff, emissiveIntensity:0.35, roughness:0.1 });
+function makeEye(side){
+  const g = new THREE.Group();
+  g.position.set(0.28 * side, 0.08, 0.54);
+  const pupil = new THREE.Mesh(new THREE.SphereGeometry(0.105, 16, 12), eyeMat);
+  pupil.scale.z = 0.4;
+  const shine = new THREE.Mesh(new THREE.SphereGeometry(0.035, 10, 8), shineMat);
+  shine.position.set(0.03 * side, 0.04, 0.085);
+  g.add(pupil, shine);
+  g.userData.shine = shine;
+  headGroup.add(g);
+  return g;
+}
+const eyeL = makeEye(-1), eyeR = makeEye(1);
+
+/* 闭眼线（悬在嘴沿上方的眼位外沿） */
+const lidMat = new THREE.MeshStandardMaterial({ color:0x2b1f00, roughness:0.6 });
+const lids = new THREE.Group();
+for(const s of [-1, 1]){
+  const lid = new THREE.Mesh(new THREE.TorusGeometry(0.092, 0.02, 8, 20, Math.PI), lidMat);
+  lid.position.set(0.28 * s, 0.20, 0.56);
+  lid.rotation.z = Math.PI;   // 开口朝下 = 下弯的闭眼弧线
+  lids.add(lid);
+}
+lids.visible = false;
+headGroup.add(lids);
+
+/* 腮红 */
+const blushMat = new THREE.MeshStandardMaterial({ color:0xff9d9d, roughness:0.9, transparent:true, opacity:0.75 });
+for(const s of [-1, 1]){
+  const b = new THREE.Mesh(shapedSphere(1, 0.17, 0.09, 0.06, 16), blushMat);
+  b.position.set(0.43 * s, -0.06, 0.44);
+  headGroup.add(b);
+}
+
+/* 呆毛 */
+for(const [x, z, tilt] of [[0, 0.02, 0], [-0.15, 0.05, 0.5], [0.14, 0.06, -0.5]]){
+  const tuft = makeFurPart(shapedSphere(1, 0.10, 0.20, 0.10, 14), {
+    color:Y_BODY, furLength:0.06, shells:8, noiseScale:12.0
+  }, 'body');
+  tuft.position.set(x, 0.58, 0.02);
+  tuft.rotation.z = tilt;
+  headGroup.add(tuft);
+}
+
+/* 翅膀 */
+const wingGeo = shapedSphere(1, 0.17, 0.5, 0.72, 24);
+wingGeo.translate(0, -0.42, 0);
+const wingL = new THREE.Group(); wingL.position.set(-1.02, 1.30, -0.02);
+const wingR = new THREE.Group(); wingR.position.set( 1.02, 1.30, -0.02);
+const wingMeshL = makeFurPart(wingGeo, { color:Y_WING, furLength:0.085, shells:12, noiseScale:9.0 }, 'wing');
+const wingMeshR = makeFurPart(wingGeo, { color:Y_WING, furLength:0.085, shells:12, noiseScale:9.0 }, 'wing');
+wingL.add(wingMeshL); wingR.add(wingMeshR);
+bodyPivot.add(wingL, wingR);
+
+/* 尾巴 */
+const tail = makeFurPart(shapedSphere(1, 0.30, 0.26, 0.44, 20), {
+  color:Y_WING, furLength:0.12, shells:12, noiseScale:8.0
+}, 'wing');
+tail.position.set(0, 1.30, -1.02);
+tail.rotation.x = -0.75;
+bodyPivot.add(tail);
+
+/* 脚蹼 */
+const footMat = new THREE.MeshStandardMaterial({ color:0xff8a00, roughness:0.45 });
+const feet = [];
+for(const s of [-1, 1]){
+  const pivot = new THREE.Group();
+  pivot.position.set(0.34 * s, 0.05, 0.12);
+  const foot = new THREE.Mesh(shapedSphere(1, 0.18, 0.06, 0.34, 16), footMat);
+  foot.position.z = 0.10;
+  pivot.add(foot);
+  bodyPivot.add(pivot);
+  feet.push(pivot);
+}
+
+/* ============ 皮肤（好感度解锁的换毛色）============ */
+const SKINS = {
+  yellow: { body:'#ffd34e', wing:'#f9c53f', beakU:0xff8a00, beakL:0xf07800, foot:0xff8a00 },
+  cream:  { body:'#fff6e0', wing:'#f2ead6', beakU:0xffa95c, beakL:0xf5973f, foot:0xffc077 },
+  toast:  { body:'#e3a95c', wing:'#d19247', beakU:0xe9873a, beakL:0xcf6f1c, foot:0xdd8f33 },
+  mint:   { body:'#b9eccd', wing:'#93d9b4', beakU:0xff9d6b, beakL:0xf08a52, foot:0xffab7a },
+  sky:    { body:'#b5e0f7', wing:'#8fc7ea', beakU:0xffb74d, beakL:0xf29e33, foot:0xffb74d },
+  sakura: { body:'#ffd3e0', wing:'#f3bfd2', beakU:0xff8fb0, beakL:0xf0729d, foot:0xff9db8 },
+  ink:    { body:'#454852', wing:'#33363e', beakU:0xffb300, beakL:0xefa100, foot:0xffb300 },
+};
+let skinId = null;
+function applySkin(id){
+  const s = SKINS[id];
+  if(!s || skinId === id) return;
+  skinId = id;
+  for(const rec of skinMats.body){
+    if(rec.base) rec.m.color.copy(new THREE.Color(s.body).multiplyScalar(0.78));
+    else rec.m.uniforms.uColor.value.set(s.body);
+  }
+  for(const rec of skinMats.wing){
+    if(rec.base) rec.m.color.copy(new THREE.Color(s.wing).multiplyScalar(0.78));
+    else rec.m.uniforms.uColor.value.set(s.wing);
+  }
+  beakUpperMat.color.set(s.beakU);
+  beakLowerMat.color.set(s.beakL);
+  footMat.color.set(s.foot);
+}
+
+/* ===== 道具 ===== */
+/* 浴缸 */
+const propTub = new THREE.Group();
+const tubMat = new THREE.MeshStandardMaterial({ color:0xf6f3ea, roughness:0.35 });
+const tubBody = new THREE.Mesh(new THREE.CylinderGeometry(1.85, 1.5, 0.95, 36), tubMat);
+tubBody.position.y = 0.45;
+const tubRim = new THREE.Mesh(new THREE.TorusGeometry(1.80, 0.10, 14, 40), tubMat.clone());
+tubRim.rotation.x = Math.PI/2; tubRim.position.y = 0.92;
+const tubWater = new THREE.Mesh(new THREE.CircleGeometry(1.62, 36),
+  new THREE.MeshStandardMaterial({ color:0x8fd0ef, transparent:true, opacity:0.9, roughness:0.15 }));
+tubWater.rotation.x = -Math.PI/2; tubWater.position.y = 0.66;
+propTub.add(tubBody, tubRim, tubWater);
+propTub.visible = false;
+scene.add(propTub);
+
+/* 火箭喷焰（冲刺） */
+const propFlame = new THREE.Mesh(new THREE.ConeGeometry(0.36, 0.62, 14),
+  new THREE.MeshStandardMaterial({ color:0xffa726, emissive:0xff6d00, emissiveIntensity:1.6, transparent:true, opacity:0.92 }));
+propFlame.rotation.x = Math.PI;      // 尖朝下
+propFlame.position.set(0, 0.33, -0.05);   // 悬空时正好衔接肚底与地面
+propFlame.visible = false;
+duck.add(propFlame);
+
+/* 眼镜（装正经） */
+const propGlasses = new THREE.Group();
+const rimMat = new THREE.MeshStandardMaterial({ color:0x2b1f00, roughness:0.25, metalness:0.3 });
+for(const s of [-1, 1]){
+  const rim = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.02, 10, 28), rimMat);
+  rim.position.set(0.28 * s, 0.13, 0.70);
+  propGlasses.add(rim);
+}
+const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.02, 0.28, 8), rimMat);
+bridge.rotation.z = Math.PI/2; bridge.position.set(0, 0.14, 0.70);
+propGlasses.add(bridge);
+headGroup.add(propGlasses);
+propGlasses.visible = false;
+
+/* 书（装正经） */
+const propBook = new THREE.Group();
+const bookCover = new THREE.Mesh(new THREE.BoxGeometry(0.85, 0.6, 0.09),
+  new THREE.MeshStandardMaterial({ color:0xb3541e, roughness:0.6 }));
+const bookPages = new THREE.Mesh(new THREE.BoxGeometry(0.78, 0.53, 0.10),
+  new THREE.MeshStandardMaterial({ color:0xfff8e8, roughness:0.9 }));
+bookPages.position.z = -0.012;
+propBook.add(bookCover, bookPages);
+propBook.position.set(0, 1.26, 1.25);
+propBook.rotation.x = -0.35;
+bodyPivot.add(propBook);
+propBook.visible = false;
+
+/* ============ 眼泪（InstancedMesh）============ */
+const MAX_TEARS = 56;
+const tearMat = new THREE.MeshStandardMaterial({
+  color:0x6fc4ff, roughness:0.1, metalness:0.15,
+  emissive:0x2a6db3, emissiveIntensity:0.45,
+  transparent:true, opacity:0.95
+});
+const tearGeo = new THREE.SphereGeometry(0.048, 10, 8);
+const tears = new THREE.InstancedMesh(tearGeo, tearMat, MAX_TEARS);
+tears.frustumCulled = false;
+scene.add(tears);
+const tearData = Array.from({length:MAX_TEARS}, () => ({ pos:new THREE.Vector3(0,-99,0), vel:new THREE.Vector3(), life:0 }));
+const dummy = new THREE.Object3D();
+let tearClock = 0, tearIdx = 0;
+
+function spawnTear(){
+  const eye = (tearIdx % 2 === 0) ? eyeL : eyeR;
+  const d = tearData[tearIdx % MAX_TEARS];
+  tearIdx++;
+  const p = new THREE.Vector3();
+  eye.getWorldPosition(p);
+  const side = (eye === eyeL) ? -1 : 1;
+  p.x += side * 0.14; p.z += 0.30; p.y -= 0.05;
+  d.pos.copy(p);
+  d.vel.set(side * 0.10, -0.15, 0.20);
+  d.life = 1.25;
+}
+
+/* ============ 表情/符号粒子 Sprite 池 ============ */
+function glyphTexture(ch, color){
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.font = '88px "Apple Color Emoji", "PingFang SC", sans-serif';
+  g.fillStyle = color || '#b06a00';
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.shadowColor = 'rgba(120,70,0,.35)'; g.shadowBlur = 6;
+  g.fillText(ch, 64, 68);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+class SpritePool {
+  constructor(glyphs, count, texColor){
+    this.items = [];
+    this.texs = glyphs.map(g => glyphTexture(g, texColor));
+    for(let i = 0; i < count; i++){
+      const s = new THREE.Sprite(new THREE.SpriteMaterial({
+        map: this.texs[0], transparent:true, depthWrite:false, opacity:0
+      }));
+      s.visible = false;
+      this.items.push({ s, life:0, max:1, vel:new THREE.Vector3(), base:1, grow:0, sway:0, swayP:Math.random()*6.28 });
+      scene.add(this.items[i].s);
+    }
+    this.cursor = 0;
+  }
+  spawn(pos, vel, life, size, grow = 0, sway = 0){
+    const it = this.items[this.cursor % this.items.length];
+    this.cursor++;
+    it.life = it.max = life;
+    it.vel.copy(vel);
+    it.base = size; it.grow = grow; it.sway = sway;
+    it.s.material.map = this.texs[Math.floor(Math.random() * this.texs.length)];
+    it.s.material.opacity = 1;
+    it.s.position.copy(pos);
+    it.s.visible = true;
+  }
+  update(dt, t, active){
+    for(const it of this.items){
+      if(it.life > 0){
+        it.life -= dt;
+        const r = Math.max(0, it.life / it.max);
+        it.vel.y += (this.g || 0) * dt;
+        it.s.position.addScaledVector(it.vel, dt);
+        if(it.sway) it.s.position.x += Math.sin(t * 3 + it.swayP) * it.sway * dt;
+        const sc = it.base * (1 + it.grow * (1 - r));
+        it.s.scale.setScalar(Math.max(0.001, sc * Math.min(1, r * 4)));
+        it.s.material.opacity = Math.min(1, r * 2.5);
+      } else if(it.s.visible){
+        it.s.visible = false;
+      }
+    }
+  }
+}
+const poolZzz      = new SpritePool(['Z', 'z'], 8);
+const poolSteam    = new SpritePool(['💨', '💨'], 10);
+const poolAngry    = new SpritePool(['💢'], 6);
+const poolConfetti = new SpritePool(['✨', '🎊', '🌟', '💛', '💥'], 26);
+const poolBubbles  = new SpritePool(['🫧', '🫧', '⚪'], 12);
+const poolSweat    = new SpritePool(['💦'], 6);
+const POOLS = [poolZzz, poolSteam, poolAngry, poolConfetti, poolBubbles, poolSweat];
+function clearFx(){
+  for(const pool of POOLS) for(const it of pool.items){ it.life = 0; it.s.visible = false; }
+  for(const d of tearData){ d.life = 0; d.pos.set(0, -99, 0); }
+}
+
+/* ============ 状态机 ============ */
+const STATUS = {
+  idle:{ t:'正在发呆摸鱼，嘎～', say:['嘎？','嘎嘎～','摸鱼真舒服','今天也想早点下班'] },
+  run :{ t:'冲鸭！！今天也要努力鸭！', say:['冲鸭！！','嘎嘎嘎！','跑起来了！','deadline 不怕！'] },
+  cry :{ t:'鸭力山大…呜呜呜…', say:['呜呜呜…','嘎…（哽咽）','鸭力山大…','抱抱我…'] },
+  sleep:{ t:'呼噜呼噜…Zzz…', say:['Zzz…','zzz…'] },
+  celebrate:{ t:'完成啦！！撒花！', say:['耶！完成鸭！','撒花！','嘎嘎嘎！（得意）','我是最棒鸭！'] },
+  angry:{ t:'哼！不理你了！', say:['哼！','气鼓鼓！','戳我干嘛！','不理你了！'] },
+  sprint:{ t:'来不及啦啊啊啊！！', say:['来不及了！！','啊啊啊！','还有 5 分钟！','别拦我！'] },
+  overload:{ t:'干不动了…让我躺一会儿…', say:['让我躺一会儿…','电量耗尽…','……','嘎。（有气无力）'] },
+  bath:{ t:'神仙日子～泡泡浴～', say:['神仙日子～','泡澡泡到天荒地老','咕嘟咕嘟～','已回归鸭生本源'] },
+  playdead:{ t:'（装死中…完全不动）', say:['（一动不动）','……（装死）'] },
+  boss:{ t:'咳咳，正在认真工作。', say:['咳咳，在忙。','（正经脸）','报告老板，我在干活。','（偷偷小声）嘎…'] },
+};
+const LINES = Object.fromEntries(Object.entries(STATUS).map(([k, v]) => [k, v.say]));
+
+let state = 'idle';
+let stateStart = 0;
+let lastInput = 0;
+const w = Object.fromEntries(Object.keys(STATUS).map(k => [k, k === 'idle' ? 1 : 0]));
+
+let blinkT = 2.2, blinkPhase = 1, blinkScaleValue = 1, petFlash = 0;
+let petClicks = [];
+let discussT = 0;
+let lowBattery = false;
+
+/* ---- 玩法交互状态：摸头 / 抱飞 / 投喂 / 养成数据 ---- */
+let petHeat = 0, lastHeadSweep = -9, lastPetBubble = -99;
+let dragVX = 0, dragVY = 0;
+let flingSeq = null, feedSeq = null;
+const PET_LINES = ['嘎……好舒服，继续嘛', '这里这里，耳根最痒', '嘎呜～摸到骨头都酥了'];
+const FLING_LINES = ['嘎呜……转好晕', '下次轻点抛嘎！', '摔…摔不死的嘎！'];
+let hud = { hunger: 100, love: 0 };
+
+const TAU = Math.PI * 2;
+function blankPose(){
+  const q = {
+    bounce:0, sink:0, lie:0, lieAng:0, hov:0, syB:0, sy:1,
+    pitch:0, yaw:0, sway:0, spin:0,
+    headPitch:0, headYaw:0, headY:0, headZ:0,
+    wing:0.30, wingF:0, wag:0, foot:0, footSpeed:8.5,
+    eyeOpen:1, beakOpen:0,
+    tears:false, zzz:false, steam:false, confetti:false,
+    bubbles:false, sweat:false,
+    tub:false, flame:false, glasses:false, book:false,
+  };
+  for(const k in q){ if(typeof q[k] === 'number') q[k] = 0; }
+  return q;
+}
+
+const STATE_POSE = {
+  idle(t){
+    const p = P();
+    p.syB = Math.sin(t * 1.7) * 0.02;
+    p.bounce = 0.018 * Math.max(0, Math.sin(t * 0.85));
+    p.pitch = Math.sin(t * 0.6) * 0.02;
+    p.headPitch = Math.cos(t * 0.5) * 0.05;
+    p.headYaw = Math.sin(t * 0.35) * 0.32;
+    p.wag = Math.sin(t * 2.0) * 0.18;
+    p.wing = 0.30 + Math.sin(t * 1.2) * 0.05;
+    return p;
+  },
+  run(t){
+    const p = P();
+    p.bounce = Math.abs(Math.sin(t * 8.5)) * 0.16;
+    p.syB = Math.sin(t * 17) * 0.035;
+    p.pitch = 0.14;
+    p.sway = Math.sin(t * 2.0) * 0.45;
+    p.yaw = Math.sin(t * 2.0) * 0.10;
+    p.headPitch = -0.08 + Math.sin(t * 17) * 0.03;
+    p.wing = 0.30 + Math.sin(t * 8.5) * 0.55;
+    p.wag = Math.sin(t * 17) * 0.35;
+    p.foot = 1; p.footSpeed = 8.5;
+    return p;
+  },
+  cry(t){
+    const p = P();
+    const sob = Math.pow(Math.sin(t * 3.7) * 0.5 + 0.5, 8) * 0.5;
+    p.sy = 0.93 + Math.sin(t * 7) * 0.01 - sob * 0.06;
+    p.pitch = 0.02 + Math.sin(t * 7) * 0.008;
+    p.headPitch = 0.25;
+    p.headYaw = Math.sin(t * 0.7) * 0.06;
+    p.headY = -0.10;
+    p.headZ = 0.26;
+    p.wing = 0.30 + 0.28;
+    p.wag = 0.04;
+    p.eyeOpen = 1;
+    p.tears = true;
+    return p;
+  },
+  sleep(t){
+    const p = P();
+    p.sy = 0.93 + Math.sin(t * 0.7) * 0.012;
+    p.pitch = 0.06 + Math.sin(t * 0.4) * 0.02;
+    p.headPitch = -0.10 + Math.sin(t * 0.3) * 0.03;
+    p.headYaw = Math.sin(t * 0.2) * 0.12;
+    p.wing = 0.14;
+    p.wag = Math.sin(t * 0.6) * 0.03;
+    p.eyeOpen = 0.07;
+    p.zzz = true;
+    return p;
+  },
+  celebrate(t){
+    const p = P();
+    p.bounce = Math.abs(Math.sin(t * 4.2)) * 0.30;
+    p.syB = Math.sin(t * 8.4) * 0.04;
+    p.spin = 2.6;
+    p.headPitch = -0.14;
+    p.headYaw = Math.sin(t * 4.2) * 0.1;
+    p.wing = 0.85 + Math.sin(t * 9) * 0.45;
+    p.wag = Math.sin(t * 9) * 0.4;
+    p.confetti = true;
+    return p;
+  },
+  angry(t){
+    const p = P();
+    p.sy = 1 + Math.sin(t * 11) * 0.03;
+    p.pitch = Math.sin(t * 22) * 0.012;
+    p.yaw = Math.sin(t * 26) * 0.02;
+    p.headYaw = Math.sin(t * 17) * 0.10;
+    p.wing = 1.9 + Math.sin(t * 20) * 0.06;    // 翅膀叉腰（竖起）
+    p.foot = 1; p.footSpeed = 10;              // 跺脚
+    p.eyeOpen = 0.55;
+    p.steam = true;
+    return p;
+  },
+  sprint(t){
+    const p = P();
+    p.bounce = Math.abs(Math.sin(t * 10)) * 0.10;
+    p.hov = 0.55;                              // 火箭原地起飞，悬空
+    p.syB = Math.sin(t * 20) * 0.02;
+    p.pitch = 0.25 + Math.sin(t * 40) * 0.01;
+    p.headPitch = -0.06 + Math.sin(t * 30) * 0.02;
+    p.headY = Math.sin(t * 30) * 0.02;
+    p.wing = -0.15;                            // 翅膀后掠
+    p.foot = 1; p.footSpeed = 16;
+    p.eyeOpen = 1.25;                          // 瞪大眼
+    p.sweat = true;
+    p.flame = true;
+    return p;
+  },
+  overload(t){
+    const p = P();
+    p.lie = 1;
+    p.lieAng = -0.5;                           // 后仰 30°，闭眼线可见
+    p.sy = 0.99 + Math.sin(t * 0.8) * 0.02;
+    p.eyeOpen = 0.10;
+    p.wing = 0.08;
+    p.steam = true;                            // 晕圈的汽
+    return p;
+  },
+  bath(t){
+    const p = P();
+    p.sink = -0.30;
+    p.sy = 0.97 + Math.sin(t * 0.9) * 0.02;
+    p.pitch = 0.03 + Math.sin(t * 0.5) * 0.03;
+    p.headYaw = Math.sin(t * 0.3) * 0.12;
+    p.headPitch = -0.06;
+    p.wing = 0.16;
+    p.eyeOpen = 0.12;
+    p.bubbles = true;
+    p.tub = true;
+    return p;
+  },
+  playdead(t){
+    const p = P();
+    p.lie = 1;
+    p.lieAng = -1.18;                          // 彻底四脚朝天
+    p.eyeOpen = 0.04;
+    p.wing = 0.02;
+    return p;
+  },
+  boss(t){
+    const p = P();
+    p.sy = 1.02;
+    p.pitch = -0.05;
+    p.headPitch = -0.02 + Math.sin(t * 1.1) * 0.02;
+    p.headYaw = Math.sin(t * 0.7) * 0.25;
+    p.wing = 0.75 + Math.sin(t * 1.4) * 0.04;
+    p.wingF = 0.7;                             // 翅尖朝前抱书
+    p.eyeOpen = 1;
+    p.glasses = true;
+    p.book = true;
+    p.sweat = Math.sin(t * 1.3) > 0.4;         // 偶尔冒汗
+    return p;
+  },
+};
+
+/* ============ UI（悬停快捷条 + 气泡）============ */
+
+/* ---------- 状态仲裁：玩法 vs Codex 监控 ----------
+ * 渲染层持两个槽：gameState（玩法/托盘/键盘想要的状态）与 mon（监控想要的状态）。
+ * 合成规则（见 docs/codex-monitor-design.md 第 7 节）：
+ *   1. 老板键 boss 期间，监控全静默
+ *   2. 监控优先级 ≥ 90（真待授权/待回答）时压过一切玩法
+ *   3. 其余情况：用户刚动过手（10s 内）演玩法，之后交还给监控
+ * 自动状态流转只在监控没接管时跑，避免两套计时器打架。 */
+let gameState = 'idle';
+let gameStart = 0;
+let gameOverrideUntil = -1e9;
+let mon = null;              /* 监控槽：{ state, priority, pinned, reason, ... } */
+let codexView = null;        /* 最近一条监控快照（留给后续岛面用） */
+
+function monitorOverrides(){
+  if(!mon || !mon.state || !STATE_POSE[mon.state]) return false;
+  if(gameState === 'boss') return false;
+  if((mon.priority || 0) >= 90) return true;
+  return simT >= gameOverrideUntil;
+}
+
+function pickState(){
+  if(gameState === 'boss') return 'boss';
+  if(monitorOverrides()) return mon.state;
+  return gameState;
+}
+
+function resolveState(){
+  const next = pickState();
+  if(next === state) return;
+  state = next;
+  stateStart = simT;
+  petClicks.length = 0;
+  try { window.yaliya && window.yaliya.announce(next); } catch {}
+}
+
+function setState(next, origin){
+  if(!STATE_POSE[next]) return;
+  gameState = next;
+  gameStart = simT;
+  if(origin === 'user') gameOverrideUntil = simT + 10;
+  resolveState();
+}
+
+/* 监控把鸭子推成某个情绪时，配一句话（限频，别刷屏） */
+const MON_LINES = {
+  celebrate: '这一轮跑完了，去看一眼',
+  cry: '嘎…有个回合失败了',
+  overload: '干不动了…让我躺一会儿',
+  angry: '那个…是不是卡在等你了？',
+  playdead: '目标卡住了，我装死等你',
+};
+let lastMonBubble = -99;
+function maybeMonitorBubble(prevState, nextState){
+  if(!nextState || nextState === prevState) return;
+  const line = MON_LINES[nextState];
+  if(!line) return;
+  if(simT - lastMonBubble < 6) return;
+  lastMonBubble = simT;
+  const p = duckAnchorScreen(0.12);
+  spawnBubble(line, p.x, p.y);
+}
+/* 气泡升级为屏幕级独立小窗：不受萌宠窗边界约束（长句不折行、不切字，可越出窗外悬在桌面）。
+   本函数只做坐标翻译：(x,y) 是本窗口内坐标 → 加窗口屏幕原点换算成屏幕坐标交给主进程 */
+function spawnBubble(text, x, y){
+  try {
+    const o = window.yaliya && window.yaliya.screenPos();
+    if(!o) return;
+    /* 档位比例 k=当前档宽/超大号宽——气泡随小鸭一同缩放 */
+    const k = Math.min(1, Math.max(0.2, innerWidth / 448));
+    window.yaliya.bubble(text, Math.round(o.x + x), Math.round(o.y + y), k);
+  } catch {}
+}
+const clock = new THREE.Clock();
+let simT = 0;
+
+function P(){
+  const q = blankPose();
+  /* 与完整版一致：状态函数没显式设置的字段继承默认值（眼睁开、翅合拢、脚速） */
+  q.sy = 1;
+  q.wing = 0.30;
+  q.footSpeed = 8.5;
+  q.eyeOpen = 1;
+  return q;
+}
+
+function tick(dt){
+  const t = (simT += dt);
+
+  /* ---- 状态权重 ---- */
+  for(const k in w){
+    const target = (k === state) ? 1 : 0;
+    w[k] += (target - w[k]) * (1 - Math.exp(-6 * dt));
+    if(w[k] < 0.001) w[k] = 0;
+  }
+
+  /* ---- 合成姿态（全零累加）---- */
+  const acc = blankPose();
+  for(const k in w){
+    const z = w[k];
+    if(z === 0) continue;
+    const s = STATE_POSE[k](t);
+    acc.bounce += s.bounce * z; acc.sink += s.sink * z; acc.lie += s.lie * z; acc.hov += s.hov * z;
+    acc.lieAng += s.lieAng * z;
+    acc.syB += s.syB * z; acc.sy += s.sy * z;
+    acc.pitch += s.pitch * z; acc.yaw += s.yaw * z; acc.sway += s.sway * z; acc.spin += s.spin * z;
+    acc.headPitch += s.headPitch * z; acc.headYaw += s.headYaw * z;
+    acc.headY += s.headY * z; acc.headZ += s.headZ * z;
+    acc.wing += s.wing * z; acc.wingF += s.wingF * z; acc.wag += s.wag * z;
+    acc.foot += s.foot * z; acc.footSpeed += s.footSpeed * z;
+    acc.eyeOpen += s.eyeOpen * z; acc.beakOpen += s.beakOpen * z;
+    if(s.tears && z > 0.4) acc.tears = true;
+    if(s.zzz && z > 0.4) acc.zzz = true;
+    if(s.steam && z > 0.4) acc.steam = true;
+    if(s.confetti && z > 0.4) acc.confetti = true;
+    if(s.bubbles && z > 0.4) acc.bubbles = true;
+    if(s.sweat && z > 0.4) acc.sweat = true;
+    if(s.tub && z > 0.4) acc.tub = true;
+    if(s.flame && z > 0.4) acc.flame = true;
+    if(s.glasses && z > 0.4) acc.glasses = true;
+    if(s.book && z > 0.4) acc.book = true;
+  }
+
+  const sy = acc.sy + acc.syB;
+  const sxz = 1 + (1 - sy) * 0.55;
+
+  /* ---- 摸头热力 → 注入姿态（眯眼 + 腮红浮起）：统一走 acc，眨眼/闭眼线自然一致 ---- */
+  petHeat = Math.max(0, Math.min(2, petHeat
+    + ((simT - lastHeadSweep) < 0.15 ? dt * 1.5 : -dt * 2.0)));
+  if(petHeat > 0.02){
+    const ph = Math.min(1, petHeat / 1.4);
+    acc.eyeOpen *= (1 - 0.62 * ph);
+    blushMat.opacity = 0.75 + 0.2 * ph;
+  } else {
+    blushMat.opacity = 0.75;
+  }
+
+  /* 低电量：小鸭没精打采（仅空闲/打盹时体现） */
+  if(lowBattery && (state === 'idle' || state === 'sleep')){
+    acc.sy -= 0.05;
+    acc.headPitch += 0.12;
+  }
+
+  /* ---- 应用 ---- */
+  bodyPivot.position.y = acc.bounce + acc.sink + acc.hov
+    + acc.lie * (0.16 + Math.abs(Math.sin(acc.lieAng)) * 0.98);
+  bodyPivot.rotation.x = acc.pitch * (1 - acc.lie) + acc.lie * acc.lieAng;
+  bodyPivot.scale.set(sxz, sy, sxz);
+  duck.position.x = acc.sway;
+  duck.rotation.y = acc.yaw + t * acc.spin;
+  headGroup.rotation.set(acc.headPitch, acc.headYaw, 0);
+  headGroup.position.set(0, 1.78 + acc.headY, 0.24 + acc.headZ);
+  wingL.rotation.z = -(acc.wing);
+  wingR.rotation.z = acc.wing;
+  wingL.rotation.y = acc.wingF;
+  wingR.rotation.y = -acc.wingF;
+  tail.rotation.y = acc.wag;
+  beakLower.rotation.x = acc.beakOpen;
+  feet.forEach((f, k) => {
+    const ph = t * acc.footSpeed + k * Math.PI;
+    f.position.y = 0.05 + acc.foot * Math.max(0, Math.sin(ph)) * 0.22;
+    f.position.z = 0.12 + acc.foot * Math.cos(ph) * 0.18;
+  });
+
+  /* ---- 道具显隐 ---- */
+  propTub.visible = w.bath > 0.02;
+  if(propTub.visible){
+    propTub.scale.setScalar(Math.min(1, w.bath * 1.15));
+    propTub.rotation.y = 0;
+  }
+  propFlame.visible = w.sprint > 0.05;
+  if(propFlame.visible){
+    propFlame.scale.set(1, 0.8 + Math.abs(Math.sin(t * 37)) * 0.5, 1);
+  }
+  propGlasses.visible = w.boss > 0.02;
+  if(propGlasses.visible){
+    propGlasses.scale.setScalar(Math.min(1, w.boss * 1.2));
+  }
+  propBook.visible = w.boss > 0.02;
+  if(propBook.visible) propBook.scale.setScalar(Math.min(1, w.boss * 1.2) * 0.95);
+
+  /* ---- 影子 ---- */
+  shadow.position.x = duck.position.x;
+  shadow.scale.setScalar(Math.max(0.55, 1 - acc.bounce * 1.6 - acc.hov * 0.45));
+  shadow.material.opacity = Math.max(0.08, 1 - (acc.bounce * 4.5 + acc.hov * 1.2)) * 0.45;
+
+  /* ---- 眨眼（闭眼状态下不触发，避免眼皮脉冲闪动）---- */
+  blinkT -= dt;
+  if(blinkT <= 0){
+    if(acc.eyeOpen > 0.35){ blinkPhase = 0; blinkT = 2.2 + Math.random() * 3.2; }
+    else blinkT = 0.5;
+  }
+  if(blinkPhase < 1){
+    if(acc.eyeOpen <= 0.35) blinkPhase = 1;
+    else blinkPhase = Math.min(1, blinkPhase + dt / 0.2);
+  }
+  blinkScaleValue = blinkPhase < 1
+    ? ((blinkPhase < 0.5 ? 1 - blinkPhase * 1.8 : (blinkPhase - 0.5) * 1.8) * 0.85 + 0.15)
+    : 1;
+  eyeL.scale.y = eyeR.scale.y = blinkScaleValue * acc.eyeOpen;
+  eyeL.scale.z = eyeR.scale.z = Math.max(0.5, acc.eyeOpen);
+  /* 闭眼线只由状态眼开度决定；封顶 0.85 柔和一点 */
+  const closeness = Math.max(0, Math.min(0.85, (0.35 - acc.eyeOpen) / 0.28));
+  lids.visible = closeness > 0.02;
+  lids.scale.setScalar(closeness);
+  /* 闭眼扁片会从瞳孔前面漏出高光小白点——眼闭合时直接藏掉高光 */
+  const shineOn = (blinkScaleValue * acc.eyeOpen) > 0.35;
+  eyeL.userData.shine.visible = eyeR.userData.shine.visible = shineOn;
+
+  /* ---- 眼泪 ---- */
+  const tearRate = acc.tears ? 10 : 0;
+  tearClock += dt * tearRate;
+  while(tearClock > 1){ tearClock -= 1; spawnTear(); }
+  for(let k = 0; k < MAX_TEARS; k++){
+    const d = tearData[k];
+    if(d.life > 0){
+      d.life -= dt;
+      d.vel.y -= 1.8 * dt;
+      d.pos.addScaledVector(d.vel, dt);
+      const s2 = Math.min(1, d.life / 0.75);
+      dummy.position.copy(d.pos);
+      dummy.scale.setScalar(Math.max(0.001, s2));
+    } else {
+      dummy.position.set(0, -99, 0);
+      dummy.scale.setScalar(0.001);
+    }
+    dummy.updateMatrix();
+    tears.setMatrixAt(k, dummy.matrix);
+  }
+  tears.instanceMatrix.needsUpdate = true;
+
+  /* ---- 粒子 ---- */
+  if(acc.zzz && Math.floor(t / 0.9) !== Math.floor((t - dt) / 0.9))
+    poolZzz.spawn(new THREE.Vector3(0.5, 2.25, 0.15), new THREE.Vector3(0.12, 0.45, 0), 2.2, 0.5, 0.5, 0.2);
+  const breathCadence = Math.floor(t / 0.5) !== Math.floor((t - dt) / 0.5);
+  if(acc.steam && breathCadence){
+    const sv = new THREE.Vector3((Math.random() - 0.5) * 0.7, 2.2 + Math.random() * 0.15, 0.15),
+          su = new THREE.Vector3(0, 0.7, 0);
+    if(w.angry > 0.5) poolAngry.spawn(sv, su, 1.3, 0.5, 1.6);
+    else poolSteam.spawn(sv, su, 1.3, 0.5, 1.6);
+  }
+  if(acc.sweat && Math.floor(t / 0.7) !== Math.floor((t - dt) / 0.7)){
+    const side = Math.random() < 0.5 ? -1 : 1;
+    poolSweat.spawn(new THREE.Vector3(side * 0.55, 1.9, 0.3),
+      new THREE.Vector3(side * 0.9, 0.6, 0), 0.9, 0.45, 0);
+  }
+  if(acc.confetti && Math.floor(t / 0.8) !== Math.floor((t - dt) / 0.8)){
+    for(let i = 0; i < 5; i++)
+      poolConfetti.spawn(new THREE.Vector3((Math.random() - 0.5) * 1.6, 2.6, 0.3),
+        new THREE.Vector3((Math.random() - 0.5) * 1.6, Math.random() * 0.6 - 0.4, (Math.random() - 0.5) * 0.6),
+        2.0, 0.42, 0);
+  }
+  if(acc.bubbles && Math.floor(t / 0.3) !== Math.floor((t - dt) / 0.3)){
+    /* 朝镜头前方偏置发射，一升就冒出浴缸边缘 */
+    const a = (Math.random() * 1.6 - 0.8) * (Math.random() < 0.5 ? 1 : -1);
+    const r = 0.7 + Math.random() * 0.8;
+    poolBubbles.spawn(new THREE.Vector3(Math.cos(a) * r, 0.78, Math.sin(a) * r * 0.75),
+      new THREE.Vector3(0, 0.85, 0.06), 1.6, 0.5, 0.9);
+  }
+  poolZzz.update(dt, t); poolSteam.update(dt, t); poolAngry.update(dt, t);
+  poolConfetti.update(dt, t); poolBubbles.update(dt, t); poolSweat.update(dt, t);
+
+  petFlash = Math.max(0, petFlash - dt * 1.2);
+  if(petFlash > 0){
+    wingL.rotation.z -= petFlash * Math.abs(Math.sin(t * 26)) * 0.5;
+    wingR.rotation.z += petFlash * Math.abs(Math.sin(t * 26)) * 0.5;
+  }
+  {
+    /* 摸头酥抖扇翅（独立于 petFlash 的持续扑扇，跟热力走） */
+    const petFlutter = Math.min(1, petHeat / 1.2);
+    if(petFlutter > 0.02){
+      wingL.rotation.z -= 0.85 * petFlutter * Math.abs(Math.sin(t * 20));
+      wingR.rotation.z += 0.85 * petFlutter * Math.abs(Math.sin(t * 20));
+    }
+  }
+  for(const m of furMats) m.uniforms.uTime.value = t;
+
+  /* ---- 自动说话（饿了插队讨食） ---- */
+  discussT += dt;
+  const hungry = hud && hud.hunger <= 30 && (state === 'idle' || state === 'run');
+  if(discussT > (hungry ? 3.2 : 5.5) && Math.abs(acc.eyeOpen) > 0.3
+     && !byeSeq && !enterSeq && !flingSeq && !feedSeq && petHeat < 0.8){
+    discussT = 0;
+    const p = duckAnchorScreen(0.12);
+    if(hungry) spawnBubble('肚子咕咕叫了……有玉米粒吗？', p.x, p.y);
+    else quackAt(p.x, p.y);
+  }
+
+  /* ---- 自动状态流转（监控接管时让位，否则「跑 45s 变躺平」会把监控状态顶掉）---- */
+  if(!monitorOverrides()){
+    const inState = simT - gameStart;
+    if(gameState === 'run' && inState > 45) setState('overload');
+    if(gameState === 'sprint' && inState > 20) setState('overload');
+    if(gameState === 'celebrate' && inState > 9) setState('idle');
+    if(gameState === 'angry' && inState > 6.5) setState('idle');
+    if(gameState === 'boss' && inState > 30) setState('idle');
+    if(gameState === 'idle' && (simT - lastInput) > 180) setState('sleep');
+    if(gameState === 'sleep' && (simT - lastInput) > 900) setState('playdead');
+  }
+
+  /* ---- 相机（与完整体验版一致：轻视差 + 俯视小鸭脸）---- */
+  camera.position.x = THREE.MathUtils.lerp(camera.position.x, mouseX * 0.55, 1 - Math.exp(-3 * dt));
+  camera.position.y = THREE.MathUtils.lerp(camera.position.y, 2.45 + mouseY * 0.35, 1 - Math.exp(-3 * dt));
+  camera.lookAt(0, 1.50, 0);   /* 俯角 9° 不变；fov40×H428：鸭子像素密度不变，上下各多出半身余量 */
+
+  /* ---- 拜拜退场序列（菜单「隐藏小鸭」触发）---- */
+  if(byeSeq){
+    const bt = simT - byeSeq.t0;
+    if(bt < 0.8){
+      /* 挥翅告别 */
+      wingR.rotation.z = 2.0 + Math.sin(bt * 12) * 0.55;
+      headGroup.rotation.y = -0.15;
+      duck.rotation.y = Math.sin(bt * 6) * 0.12;
+    } else {
+      /* 一路小跑向右离场 */
+      duck.position.x += dt * 3.6;
+      duck.rotation.y = 0.35 + Math.sin(simT * 13) * 0.16;
+      bodyPivot.position.y += Math.abs(Math.sin(simT * 13)) * 0.12;
+      wingL.rotation.z = -(0.45 + Math.abs(Math.sin(simT * 13)) * 0.45);
+      wingR.rotation.z = 0.45 + Math.abs(Math.sin(simT * 13)) * 0.45;
+      if(bt >= 2.0 && !byeSeq.done){
+        byeSeq.done = true;
+        try { window.yaliya && window.yaliya.hideNow(); } catch {}
+      }
+    }
+  }
+
+  /* ---- 反向小跑登场序列（菜单「显示小鸭」触发：右侧小跑回家 → 落定压弹 → 报到）---- */
+  if(enterSeq){
+    const et = simT - enterSeq.t0;
+    if(!enterSeq.arrive){
+      if(et < enterSeq.RUN){
+        /* 沿地面小跑回家 */
+        const r = et / enterSeq.RUN;
+        duck.position.x = enterSeq.x0 * (1 - r);
+        duck.rotation.y = -0.30 + Math.sin(simT * 13) * 0.16;   /* 面向左侧家门 */
+        bodyPivot.position.y += Math.abs(Math.sin(simT * 13)) * 0.12;
+        wingL.rotation.z = -(0.45 + Math.abs(Math.sin(simT * 13)) * 0.45);
+        wingR.rotation.z = 0.45 + Math.abs(Math.sin(simT * 13)) * 0.45;
+      } else {
+        /* 到家：身位撂正 + 4 颗小尘轻落 */
+        duck.position.x = 0;
+        duck.rotation.y = 0;
+        enterSeq.arrive = simT;
+        for(let i = 0; i < 4; i++){
+          const side = i % 2 ? 1 : -1;
+          poolBubbles.spawn(
+            new THREE.Vector3(side * (0.3 + Math.random() * 0.3), 0.12, 0.35),
+            new THREE.Vector3(side * (0.6 + Math.random() * 0.5), 0.5, 0),
+            0.55, 0.4, 1.4
+          );
+        }
+      }
+    } else {
+      /* 压扁-回弹（0.55s 弹性震荡） */
+      const st = simT - enterSeq.arrive;
+      if(st < 0.55){
+        const k = 1 - 0.30 * Math.cos(13 * st) * Math.exp(-5.5 * st);
+        bodyPivot.scale.y *= k;
+        bodyPivot.scale.x *= 1 + (1 - k) * 0.55;
+        bodyPivot.scale.z *= 1 + (1 - k) * 0.55;
+      } else {
+        enterSeq = null;
+        discussT = 0;              /* 刚报完到，重置吐槽计时——下一句自动吐槽等 5.5s，绝不叠气泡 */
+        const p = duckAnchorScreen(0.12);
+        spawnBubble('嘎！我回来啦！', p.x, p.y);
+      }
+    }
+  }
+
+  /* ---- 抱飞序列：飞行姿态（位移由主进程惯性接管）→ 落定压弹 + 尘土 + 眩晕吐槽 ---- */
+  if(flingSeq){
+    if(!flingSeq.landed){
+      const ft = simT - flingSeq.t0;
+      bodyPivot.position.y += 0.22 + Math.sin(ft * 12) * 0.06;
+      bodyPivot.rotation.x += -0.16;
+      headGroup.rotation.x += -0.15;
+      wingL.rotation.z -= 1.05; wingR.rotation.z += 1.05;
+      tail.rotation.y += Math.sin(ft * 8) * 0.2;
+    } else {
+      const st2 = simT - flingSeq.landed;
+      if(st2 < 0.5){
+        const k2 = 1 - 0.32 * Math.cos(12 * st2) * Math.exp(-5.2 * st2);
+        bodyPivot.scale.y *= k2;
+        bodyPivot.scale.x *= 1 + (1 - k2) * 0.55;
+        bodyPivot.scale.z *= 1 + (1 - k2) * 0.55;
+      } else {
+        flingSeq = null;
+        for(let i2 = 0; i2 < 4; i2++){
+          const sd = i2 % 2 ? 1 : -1;
+          poolBubbles.spawn(
+            new THREE.Vector3(sd * (0.3 + Math.random() * 0.3), 0.12, 0.35),
+            new THREE.Vector3(sd * (0.6 + Math.random() * 0.5), 0.5, 0),
+            0.55, 0.4, 1.4
+          );
+        }
+        const p2 = duckAnchorScreen(0.12);
+        spawnBubble(FLING_LINES[Math.floor(Math.random() * FLING_LINES.length)], p2.x, p2.y);
+        discussT = 0; lastInput = simT;
+      }
+    }
+  }
+
+  /* ---- 投喂序列：兴奋跳跃（振幅随时间衰减）→ 彩纸雨 + 打嗝报到 ---- */
+  if(feedSeq){
+    const ft3 = simT - feedSeq.t0;
+    if(ft3 < 1.6){
+      const dec = Math.exp(-1.5 * ft3);
+      bodyPivot.position.y += Math.abs(Math.sin(ft3 * 9)) * 0.42 * dec;
+      wingL.rotation.z -= 0.9 * dec * Math.abs(Math.sin(ft3 * 11));
+      wingR.rotation.z += 0.9 * dec * Math.abs(Math.sin(ft3 * 11));
+      headGroup.rotation.x += -0.12 * dec;
+    } else {
+      feedSeq = null;
+      for(let i3 = 0; i3 < 6; i3++)
+        poolConfetti.spawn(
+          new THREE.Vector3((Math.random() - 0.5) * 1.2, 2.3, 0.3),
+          new THREE.Vector3((Math.random() - 0.5) * 1.2, Math.random() * 0.5, (Math.random() - 0.5) * 0.4),
+          1.6, 0.42, 0
+        );
+      const p3 = duckAnchorScreen(0.12);
+      spawnBubble('咕噜咕噜——饱了！嘎！', p3.x, p3.y);
+    }
+  }
+
+  computePetRect();          /* 每帧刷新小鸭包围盒，供穿透判定使用 */
+  sendHeadPos();             /* 头顶投影点 → 药丸岛锚点（节流 150ms） */
+  renderer.render(scene, camera);
+}
+
+/* 头顶药丸岛锚点：头顶点 (0, 2.62, 0) 投影成窗口内 CSS px 后节流上报主进程。
+   量化成整数 + 2px 死区：idle 呼吸起伏、悬停视差的亚像素摆动不再上报
+   （否则主进程每 150ms 重排一次玻璃药丸 = 胶囊抖动与「刷新感」的来源） */
+let lastHeadSend = 0, lastHeadSent = null;
+function sendHeadPos(){
+  const now = performance.now();
+  const dragging = dragOn;
+  if(now - lastHeadSend < (dragging ? 32 : 150)) return;
+  lastHeadSend = now;
+  const q = projectPoint(0, 2.62, 0);
+  const x = Math.round(q.px), y = Math.round(q.py);
+  const dead = dragging ? 0 : 2;
+  if(lastHeadSent && Math.abs(lastHeadSent.x - x) < dead && Math.abs(lastHeadSent.y - y) < dead) return;
+  lastHeadSent = { x, y };
+  try { window.yaliya.headPos(x, y); } catch {}
+}
+
+function quackAt(x, y){
+  const list = LINES[state];
+  spawnBubble(list[Math.floor(Math.random() * list.length)], x, y);
+}
+
+/* 将小鸭头部(或带 dyY 偏移)投影到窗口 CSS 像素 */
+function duckAnchorScreen(dyY = 0){
+  const v = new THREE.Vector3(0, 2.35 + dyY, 0).project(camera);
+  return { x: (v.x * 0.5 + 0.5) * innerWidth, y: (-v.y * 0.5 + 0.5) * innerHeight };
+}
+
+/* ============ 交互：拖拽 + 点击 + 穿透 ============ */
+let mouseX = 0, mouseY = 0;
+addEventListener('pointermove', e => {
+  mouseX = (e.clientX / innerWidth  - 0.5) * 2;
+  mouseY = (e.clientY / innerHeight - 0.5) * 2;
+  /* 摸头检测：未按下 + 命中头部区域（世界 y > 1.55）+ 轻缓划过 → 记一次"摸" */
+  if(e.buttons === 0){
+    pointerray(e);
+    const hit = raycaster.intersectObject(duck, true)[0];
+    if(hit && hit.point.y > 1.55){
+      const spd = Math.abs(e.movementX) + Math.abs(e.movementY);
+      if(spd > 0.6 && spd < 16) lastHeadSweep = simT;
+    }
+  }
+});
+
+let dragOn = false, dragMoved = 0;
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+
+/* 鼠标在小鸭包围盒内 → 窗口可交互；之外 → 全穿透。
+   包围盒每帧由小鸭关键点投影而来（泡澡时算上浴缸） */
+const BODY_POINTS = [
+  [-1.45, 1.30, 0], [1.45, 1.30, 0],
+  [0, 2.62, 0], [0, 0.05, 0.95], [0, 0.05, -0.95], [0, 0.55, 0.6],
+];
+const TUB_POINTS = [
+  [-1.95, 0.85, 0.6], [1.95, 0.85, 0.6],
+  [-1.95, 0.05, -0.9], [1.95, 0.05, -0.9], [0, -0.02, 0],
+];
+const CELEB_POINTS = [[0, 3.3, 0]];
+let petRect = null;          /* {x,y,w,h} 窗口 CSS 像素 */
+function projectPoint(x, y, z){
+  const v = new THREE.Vector3(x, y, z).project(camera);
+  return { px: (v.x * 0.5 + 0.5) * innerWidth, py: (-v.y * 0.5 + 0.5) * innerHeight };
+}
+function computePetRect(){
+  const pts = (w.bath > 0.5 ? TUB_POINTS : BODY_POINTS)
+    .concat(w.celebrate > 0.5 ? CELEB_POINTS : []);
+  let minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+  for(const [x, y, z] of pts){
+    const q = projectPoint(x, y, z);
+    if(q.px < minX) minX = q.px;
+    if(q.py < minY) minY = q.py;
+    if(q.px > maxX) maxX = q.px;
+    if(q.py > maxY) maxY = q.py;
+  }
+  const PAD = 8;
+  petRect = {
+    x: Math.max(0, minX - PAD), y: Math.max(0, minY - PAD),
+    w: Math.min(innerWidth, maxX - minX), h: Math.min(innerHeight, maxY - minY),
+  };
+}
+let clickThrough = true;
+function updateClickThrough(cx, cy, hasCoord){
+  const inside = dragOn || (hasCoord && petRect
+    && cx >= petRect.x && cx <= petRect.x + petRect.w
+    && cy >= petRect.y && cy <= petRect.y + petRect.h);
+  if(inside && clickThrough){
+    clickThrough = false;
+    try { window.yaliya.setClickThrough(false); } catch {}
+  } else if(!inside && !clickThrough && !dragOn){
+    clickThrough = true;
+    mouseX = mouseY = 0;               /* 鼠标离开小鸭 → 视差归零，镜头回正 */
+    try { window.yaliya.setClickThrough(true); } catch {}
+  }
+}
+addEventListener('pointermove', e => {
+  updateClickThrough(e.clientX, e.clientY, true);
+});
+
+/* ---------- Codex 任务卡（v0.4）----------
+ * 详情展开/收回由 taskcard.html 与主进程完成（点击切展开/收起；悬停不做任何动作）。 */
+
+addEventListener('pointerdown', e => {
+  lastInput = simT;
+  dragVX = 0; dragVY = 0;
+  try { window.yaliya.fling(0, 0); } catch {}   /* 飞行中伸手即抓停 */
+  pointerray(e);
+  if(!hitsDuck(e)) return;
+  dragOn = true; dragMoved = 0;
+  try { window.yaliya.setClickThrough(false); } catch {}
+});
+addEventListener('pointermove', e => {
+  if(!dragOn) return;
+  if(e.buttons & 1){
+    dragMoved += Math.abs(e.movementX) + Math.abs(e.movementY);
+    /* 指数平滑记录拖拽速度 → 松手瞬间折算惯性 */
+    dragVX = dragVX * 0.72 + e.movementX * 0.28;
+    dragVY = dragVY * 0.72 + e.movementY * 0.28;
+    try { window.yaliya.moveBy(e.movementX, e.movementY); } catch {}
+  }
+});
+addEventListener('pointerup', e => {
+  if(dragOn){
+    dragOn = false;
+    const speed = Math.hypot(dragVX, dragVY);
+    if(dragMoved > 12 && speed > 9){
+      /* 抱飞：惯性交给主进程滑行（撞屏反弹+衰减），鸭子摆飞行姿态，落地主进程再通知 */
+      const k = Math.min(38, speed) / speed;
+      try { window.yaliya.fling(dragVX * k, dragVY * k); } catch {}
+      flingSeq = { t0: simT, landed: 0 };
+    } else {
+      try { window.yaliya.savePos(); } catch {}
+      if(dragMoved < 6){                       /* 没拖动 = 互动 */
+        interactions(e);
+      }
+    }
+  }
+  updateClickThrough(e.clientX, e.clientY, true);
+});
+
+function pointerray(e){
+  pointer.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(pointer, camera);
+}
+function hitsDuck(e){
+  pointerray(e);
+  return raycaster.intersectObject(duck, true).length > 0;
+}
+
+function interactions(e){
+  /* 连点 4 次会生气 */
+  petClicks.push(simT);
+  petClicks = petClicks.filter(x => simT - x < 3.5);
+  petFlash = 1;
+  const p = { x: e.clientX, y: e.clientY - 18 };
+  if(petClicks.length >= 4 && state !== 'angry' && state !== 'playdead'){
+    petClicks.length = 0;
+    setState('angry', 'user');
+    spawnBubble('哼！戳戳戳就知道戳！', p.x, p.y);
+    return;
+  }
+  if(state === 'playdead' || state === 'sleep'){
+    setState('idle', 'user');
+    spawnBubble('嘎？！', p.x, p.y);
+    return;
+  }
+  if(state === 'overload'){
+    setState('idle', 'user');
+    spawnBubble('复活了！嘎！', p.x, p.y);
+    return;
+  }
+  quackAt(p.x, p.y);
+}
+
+addEventListener('contextmenu', e => {
+  e.preventDefault();
+  try { window.yaliya && window.yaliya.openCtx(); } catch {}
+});
+
+/* 托盘/老板键状态指令 */
+try {
+  window.yaliya && window.yaliya.onState(s => setState(s, 'user'));
+} catch {}
+
+/* 主进程指令：拜拜退场 / 唤回复位 */
+let byeSeq = null;
+function startBye(){
+  if(byeSeq) return;
+  enterSeq = null;                 /* 退场时打断尚未播完的登场演出 */
+  duck.scale.setScalar(1);
+  byeSeq = { t0: simT, done: false };
+  const p = duckAnchorScreen(0.12);
+  spawnBubble('拜拜～', p.x, p.y);
+}
+try {
+  window.yaliya && window.yaliya.onAct && window.yaliya.onAct(act => {
+    if(act === 'byehide') startBye();
+    else if(act === 'hello'){ byeSeq = null; startEnter(); }
+    /* 喂玉米粒：托盘触发兴奋跳跃；抱飞落地：压弹 + 眩晕 */
+    else if(act === 'feed'){
+      if(!feedSeq && !enterSeq && !byeSeq){ feedSeq = { t0: simT }; lastInput = simT; }
+    }
+    else if(act === 'fling-land'){
+      if(flingSeq && !flingSeq.landed) flingSeq.landed = simT;
+    }
+    /* 皮肤解锁播报：庆祝 + 指路 */
+    else if(act === 'unlock'){
+      lastInput = simT;
+      setState('celebrate', 'user');
+      const p = duckAnchorScreen(0.12);
+      spawnBubble('新皮肤解锁嘎！托盘菜单快去换毛色！', p.x, p.y);
+      discussT = 0;
+    }
+  });
+} catch {}
+
+/* 养成数据推送：饱食度 / 好感度 / 皮肤 */
+try {
+  window.yaliya && window.yaliya.onHud && window.yaliya.onHud(d => {
+    if(d){
+      hud = d;
+      if(d.skin && SKINS[d.skin]) applySkin(d.skin);
+    }
+  });
+} catch {}
+
+/* Codex 监控推送：主进程算好「鸭子该演什么」，这里只管仲裁与演出 */
+try {
+  window.yaliya && window.yaliya.onCodex && window.yaliya.onCodex(d => {
+    const prev = state;
+    codexView = d || null;
+    mon = (d && d.state && STATE_POSE[d.state]) ? d : null;
+    resolveState();
+    if(mon && monitorOverrides()) maybeMonitorBubble(prev, state);
+  });
+} catch {}
+
+/* 反向小跑登场序列数据 */
+let enterSeq = null;
+function startEnter(){
+  enterSeq = { t0: simT, x0: 0.85, RUN: 1.05, arrive: 0 };
+  duck.position.x = 0.85;       /* 从画面内右侧入场（超视野带内，零切屏） */
+  duck.scale.setScalar(1);
+  duck.rotation.y = -0.30;
+}
+
+addEventListener('keydown', e => {
+  lastInput = simT;
+  const map = { '1':'idle', '2':'run', '3':'cry', '4':'sleep', '5':'celebrate', '6':'angry',
+                'd':'sprint', 'p':'bath', 'k':'playdead', 'o':'overload', 'b':'boss', 'Escape':'idle' };
+  if(e.key === 'b' && state === 'boss'){ setState('idle', 'user'); return; }
+  if(map[e.key]) setState(map[e.key], 'user');
+});
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+addEventListener('blur', () => {
+  clickThrough = true;
+  mouseX = mouseY = 0;
+  try { window.yaliya.setClickThrough(true); } catch {}
+});
+
+/* ============ 低电量联动 ============ */
+if(navigator.getBattery){
+  navigator.getBattery().then(bat => {
+    const check = () => { lowBattery = bat.level < 0.2 && !bat.charging; };
+    check();
+    bat.addEventListener('levelchange', check);
+    bat.addEventListener('chargingchange', check);
+  });
+}
+
+/* ============ 启动 ============ */
+function animate(){
+  requestAnimationFrame(animate);
+  tick(Math.min(clock.getDelta(), 0.05));
+}
+setState('idle');
+try { window.yaliya && window.yaliya.setClickThrough(true); } catch {}
+animate();
+</script>
+</body>
+</html>

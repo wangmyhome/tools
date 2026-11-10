@@ -1,0 +1,37 @@
+{
+  "manifest_version": 3,
+  "name": "本地密码管家",
+  "version": "1.3.0",
+  "description": "纯本地运行的密码管理插件：悬浮弹窗 / 侧边栏 / 全屏页三种形态，无需主密码，数据只存本机，零联网。",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "downloads",
+    "sidePanel"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "本地密码管家",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
